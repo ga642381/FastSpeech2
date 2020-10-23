@@ -1,5 +1,5 @@
 import os
-from data import ljspeech, blizzard2013
+from data import ljspeech, blizzard2013, vctk, libritts
 import hparams as hp
 
 def write_metadata(train, val, out_dir):
@@ -25,11 +25,19 @@ def main():
     energy_out_dir = os.path.join(out_dir, "energy")
     if not os.path.exists(energy_out_dir):
         os.makedirs(energy_out_dir, exist_ok=True)
+        
+    print("\nStart preprocessing...")
+    print("Data directory : {}".format(in_dir))
+    print("Processed data directory : {}\n".format(out_dir))
 
     if hp.dataset == "LJSpeech":
         train, val = ljspeech.build_from_path(in_dir, out_dir)
     if hp.dataset == "Blizzard2013":
         train, val = blizzard2013.build_from_path(in_dir, out_dir)
+    if hp.dataset == "VCTK":
+        train, val = vctk.build_from_path(in_dir, out_dir)
+    if hp.dataset == "LibriTTS":
+        train, val = libritts.build_from_path(in_dir, out_dir)
     write_metadata(train, val, out_dir)
     
 if __name__ == "__main__":

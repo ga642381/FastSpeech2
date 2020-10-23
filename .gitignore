@@ -106,10 +106,12 @@ venv.bak/
 __pycache__
 .vscode
 .DS_Store
+# dataset
+dataset/
 
 # MFA
 montreal-forced-aligner/
-
+MFA/
 # data, checkpoint, and models
 preprocessed/
 ckpt/

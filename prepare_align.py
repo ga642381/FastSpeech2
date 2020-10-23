@@ -1,5 +1,5 @@
 import os
-from data import ljspeech, blizzard2013
+from data import ljspeech, blizzard2013, vctk, libritts
 import hparams as hp
 
 def main():
@@ -9,6 +9,10 @@ def main():
         ljspeech.prepare_align(in_dir)
     if hp.dataset == "Blizzard2013":
         blizzard2013.prepare_align(in_dir)
+    if hp.dataset == "VCTK":
+        vctk.prepare_align(in_dir)
+    if hp.dataset == "LibriTTS":
+        libritts.prepare_align(in_dir)
     
 if __name__ == "__main__":
     main()

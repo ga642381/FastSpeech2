@@ -31,7 +31,7 @@ def evaluate(model, step, vocoder=None):
     
     # Get dataset
     dataset = Dataset("val.txt", sort=False)
-    loader = DataLoader(dataset, batch_size=hp.batch_size**2, shuffle=False, collate_fn=dataset.collate_fn, drop_last=False, num_workers=0, )
+    loader = DataLoader(dataset, batch_size=hp.batch_size**2, shuffle=False, collate_fn=dataset.collate_fn, drop_last=False, num_workers=0)
     
     # Get loss function
     Loss = FastSpeech2Loss().to(device)
@@ -48,6 +48,10 @@ def evaluate(model, step, vocoder=None):
         for j, data_of_batch in enumerate(batchs):
             # Get Data
             id_ = data_of_batch["id"]
+            if hp.use_spk_embed:
+                spk_ids = torch.tensor(list(range(1, 1+len(batchs)))).to(torch.int64).to(device)
+            else:
+                spk_ids = None
             text = torch.from_numpy(data_of_batch["text"]).long().to(device)
             mel_target = torch.from_numpy(data_of_batch["mel_target"]).float().to(device)
             D = torch.from_numpy(data_of_batch["D"]).int().to(device)
@@ -62,7 +66,7 @@ def evaluate(model, step, vocoder=None):
             with torch.no_grad():
                 # Forward
                 mel_output, mel_postnet_output, log_duration_output, f0_output, energy_output, src_mask, mel_mask, out_mel_len = model(
-                        text, src_len, mel_len, D, f0, energy, max_src_len, max_mel_len)
+                        text, src_len, mel_len, D, f0, energy, max_src_len, max_mel_len, spk_ids)
                 
                 # Cal Loss
                 mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss = Loss(

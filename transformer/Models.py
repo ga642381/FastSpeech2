@@ -85,7 +85,7 @@ class Decoder(nn.Module):
 
     def __init__(self,
                  len_max_seq=hp.max_seq_len,
-                 d_word_vec=hp.encoder_hidden,
+                 d_word_vec=hp.decoder_hidden,
                  n_layers=hp.decoder_layer,
                  n_head=hp.decoder_head,
                  d_k=hp.decoder_hidden // hp.decoder_head,
@@ -97,7 +97,6 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
 
         n_position = len_max_seq + 1
-
         self.position_enc = nn.Parameter(
             get_sinusoid_encoding_table(n_position, d_word_vec).unsqueeze(0), requires_grad=False)
 

@@ -4,13 +4,22 @@ from scipy.io.wavfile import read
 from scipy.io.wavfile import write
 
 import audio.stft as stft
+from audio.stft import Audio2Mel
 from audio.audio_processing import griffin_lim
 import hparams
 
-_stft = stft.TacotronSTFT(
-    hparams.filter_length, hparams.hop_length, hparams.win_length,
-    hparams.n_mel_channels, hparams.sampling_rate, hparams.mel_fmin,
-    hparams.mel_fmax)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+if hparams.dataset == "VCTK" or hparams.dataset == "LibriTTS":
+    _Audio2Mel = Audio2Mel(
+        hparams.filter_length, hparams.hop_length, hparams.win_length,
+        hparams.n_mel_channels, hparams.sampling_rate, hparams.mel_fmin, None).to(device)
+
+else:
+    _stft = stft.TacotronSTFT(
+        hparams.filter_length, hparams.hop_length, hparams.win_length,
+        hparams.n_mel_channels, hparams.sampling_rate, hparams.mel_fmin,
+        hparams.mel_fmax)
 
 
 def load_wav_to_torch(full_path):
@@ -33,21 +42,31 @@ def get_mel(filename):
 
     return melspec, energy
 
-
-def get_mel_from_wav(audio):
-    sampling_rate = hparams.sampling_rate
-    if sampling_rate != _stft.sampling_rate:
-        raise ValueError("{} {} SR doesn't match target {} SR".format(
-            sampling_rate, _stft.sampling_rate))
-    audio_norm = audio / hparams.max_wav_value
-    audio_norm = audio_norm.unsqueeze(0)
-    audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
-    melspec, energy = _stft.mel_spectrogram(audio_norm)
-    melspec = torch.squeeze(melspec, 0)
-    energy = torch.squeeze(energy, 0)
-
-    return melspec, energy
-
+if hparams.dataset == "VCTK" or hparams.dataset == "LibriTTS":
+    def get_mel_from_wav(audio):
+        audio = audio.unsqueeze(0)
+        audio = audio.unsqueeze(0)
+        log_melspec, energy = _Audio2Mel(audio.to(device))
+        log_melspec = torch.squeeze(log_melspec, 0)
+        energy = torch.squeeze(energy, 0)
+        
+        return log_melspec, energy
+    
+else:
+    def get_mel_from_wav(audio):
+        sampling_rate = hparams.sampling_rate
+        if sampling_rate != _stft.sampling_rate:
+            raise ValueError("{} {} SR doesn't match target {} SR".format(
+                sampling_rate, _stft.sampling_rate))
+        audio_norm = audio / hparams.max_wav_value
+        audio_norm = audio_norm.unsqueeze(0)
+        audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
+        melspec, energy = _stft.mel_spectrogram(audio_norm)
+        melspec = torch.squeeze(melspec, 0)
+        energy = torch.squeeze(energy, 0)
+    
+        return melspec, energy
+    
 
 def inv_mel_spec(mel, out_filename, griffin_iters=60):
     mel = torch.stack([mel])

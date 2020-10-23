@@ -8,17 +8,30 @@ matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import os
-
+import librosa
 import text
 import hparams as hp
+import soundfile
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# Kaiwei 2020.10.06
+# necessary to keep the duration(int) close to the original one
+def duration_warp(real_d, int_d):
+    total_diff = sum(real_d) - sum(int_d)
+    drop_diffs = np.array(real_d) - np.array(int_d)
+    drop_order = np.argsort(-drop_diffs)
+    for i in range(int(total_diff)):
+        index = drop_order[i]
+        int_d[index] +=1
+        
+    return int_d 
+
 def get_alignment(tier):
     sil_phones = ['sil', 'sp', 'spn']
-
     phones = []
-    durations = []
+    durations_real = []
+    durations_int = []
     start_time = 0
     end_time = 0
     end_idx = 0
@@ -37,11 +50,16 @@ def get_alignment(tier):
             end_idx = len(phones)
         else:
             phones.append(p)
-        durations.append(int(e*hp.sampling_rate/hp.hop_length)-int(s*hp.sampling_rate/hp.hop_length))
+        
+        d = e*hp.sampling_rate/hp.hop_length - s*hp.sampling_rate/hp.hop_length
+        durations_real.append(d)
+        durations_int.append(int(d))
 
     # Trimming tailing silences
+    durations_real = durations_real[:end_idx]
+    durations_int = durations_int[:end_idx]
     phones = phones[:end_idx]
-    durations = durations[:end_idx]
+    durations = duration_warp(durations_real, durations_int)
     
     return phones, durations, start_time, end_time
 
@@ -123,17 +141,34 @@ def waveglow_infer(mel, waveglow, path):
     wav = wav.astype('int16')
     wavfile.write(path, hp.sampling_rate, wav)
 
-def melgan_infer(mel, melgan, path):
-    with torch.no_grad():
-        wav = melgan.inference(mel).cpu().numpy()
-    wav = wav.astype('int16')
-    wavfile.write(path, hp.sampling_rate, wav)
 
-def get_melgan():
-    melgan = torch.hub.load('seungwonpark/melgan', 'melgan')
-    melgan.eval()
-    return melgan
 
+if hp.dataset == "VCTK" or hp.dataset == "LibriTTS":
+    def get_melgan():
+        melgan = torch.hub.load('descriptinc/melgan-neurips', 'load_melgan')
+        return melgan
+    
+    def melgan_infer(mel, melgan, path):
+        wav = melgan.inverse(mel).squeeze(0).detach().cpu().numpy()
+        soundfile.write(path, wav, hp.sampling_rate)
+        
+    def melgan_infer_batch(mel, melgan):
+        return melgan.inverse(mel).cpu().numpy()
+    
+else:
+    def get_melgan():
+        melgan = torch.hub.load('seungwonpark/melgan', 'melgan')
+        melgan.eval()
+        return melgan
+    
+    def melgan_infer(mel, melgan, path):
+        with torch.no_grad():
+            wav = melgan.inference(mel).cpu().numpy()
+        wav = wav.astype('int16')
+        wavfile.write(path, hp.sampling_rate, wav)
+        
+
+    
 def pad_1D(inputs, PAD=0):
 
     def pad_data(x, length, PAD):

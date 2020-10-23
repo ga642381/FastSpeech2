@@ -4,7 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import math
 import os
-
+import random
 import hparams
 import audio as Audio
 from utils import pad_1D, pad_2D, process_meta
@@ -17,7 +17,13 @@ class Dataset(Dataset):
     def __init__(self, filename="train.txt", sort=True):
         self.basename, self.text = process_meta(os.path.join(hparams.preprocessed_path, filename))
         self.sort = sort
-
+        
+        if hparams.dataset == "VCTK":
+            from data import vctk
+            self.spk_table, self.inv_spk_table = vctk.get_spk_table()
+        if hparams.dataset == "LibriTTS":
+            from data import libritts
+            self.spk_table, self.inv_spk_table = libritts.get_spk_table()
     def __len__(self):
         return len(self.text)
 
@@ -48,6 +54,12 @@ class Dataset(Dataset):
 
     def reprocess(self, batch, cut_list):
         ids = [batch[ind]["id"] for ind in cut_list]
+        if hparams.use_spk_embed:
+            if hparams.dataset == "VCTK" or hparams.dataset=="LibriTTS":
+                spk_ids = [self.spk_table[_id.split("_")[0]] for _id in ids]
+            else:
+                raise NotImplementedError("Looking up datset {} speaker table not implemented".format(hparams.dataset))
+                
         texts = [batch[ind]["text"] for ind in cut_list]
         mel_targets = [batch[ind]["mel_target"] for ind in cut_list]
         Ds = [batch[ind]["D"] for ind in cut_list]
@@ -70,16 +82,28 @@ class Dataset(Dataset):
         f0s = pad_1D(f0s)
         energies = pad_1D(energies)
         log_Ds = np.log(Ds + hparams.log_offset)
-
-        out = {"id": ids,
-               "text": texts,
-               "mel_target": mel_targets,
-               "D": Ds,
-               "log_D": log_Ds,
-               "f0": f0s,
-               "energy": energies,
-               "src_len": length_text,
-               "mel_len": length_mel}
+        
+        if hparams.use_spk_embed:
+            out = {"id": ids,
+                   "spk_ids": spk_ids,
+                   "text": texts,
+                   "mel_target": mel_targets,
+                   "D": Ds,
+                   "log_D": log_Ds,
+                   "f0": f0s,
+                   "energy": energies,
+                   "src_len": length_text,
+                   "mel_len": length_mel}        
+        else:
+            out = {"id": ids,
+                   "text": texts,
+                   "mel_target": mel_targets,
+                   "D": Ds,
+                   "log_D": log_Ds,
+                   "f0": f0s,
+                   "energy": energies,
+                   "src_len": length_text,
+                   "mel_len": length_mel}
         
         return out
 
@@ -99,7 +123,12 @@ class Dataset(Dataset):
         output = list()
         for i in range(real_batchsize):
             output.append(self.reprocess(batch, cut_list[i]))
-
+        
+        # shuffle batch of batchs to solve the problem that
+        # during synth, it always synthesizes short(long) sentences
+        # 2020.10.03 KaiWei
+        
+        random.shuffle(output)
         return output
 
 if __name__ == "__main__":

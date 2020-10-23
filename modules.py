@@ -16,6 +16,30 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
+def Embedding(num_embeddings, embedding_dim, padding_idx, std=0.01):
+    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+    m.weight.data.normal_(0, std)
+    return m
+
+class SpeakerIntegrator(nn.Module):
+    """ Speaker Integrator """
+    def __init__(self):
+        super(SpeakerIntegrator, self).__init__()
+        self.spk_embed_integration_type = hp.spk_embed_integration_type
+    
+    def forward(self, x, spembs):
+        if self.spk_embed_integration_type == "add":
+            pass
+        elif self.spk_embed_integration_type == "concat":
+            spembs = torch.unsqueeze(spembs, 1)
+            spembs = spembs.repeat(1, x.shape[1], 1)
+            x = torch.cat((x, spembs), 2)
+        else:
+            raise NotImplementedError("support only add or concat.")
+            
+        return x
+        
+
 class VarianceAdaptor(nn.Module):
     """ Variance Adaptor """
 
@@ -28,11 +52,19 @@ class VarianceAdaptor(nn.Module):
         
         self.pitch_bins = nn.Parameter(torch.exp(torch.linspace(np.log(hp.f0_min), np.log(hp.f0_max), hp.n_bins-1)))
         self.energy_bins = nn.Parameter(torch.linspace(hp.energy_min, hp.energy_max, hp.n_bins-1))
-        self.pitch_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden)
-        self.energy_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden)
-    
+        if hp.use_spk_embed:
+            if hp.spk_embed_integration_type == "concat":
+                self.pitch_embedding  = nn.Embedding(hp.n_bins, hp.encoder_hidden + hp.spk_embed_dim)
+                self.energy_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden + hp.spk_embed_dim)
+            else:
+                self.pitch_embedding  = nn.Embedding(hp.n_bins, hp.encoder_hidden)
+                self.energy_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden)
+        else:
+            self.pitch_embedding  = nn.Embedding(hp.n_bins, hp.encoder_hidden)
+            self.energy_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden)
+            
     def forward(self, x, src_mask, mel_mask=None, duration_target=None, pitch_target=None, energy_target=None, max_len=None):
-
+        ## Duration Predictor ##
         log_duration_prediction = self.duration_predictor(x, src_mask)
         if duration_target is not None:
             x, mel_len = self.length_regulator(x, duration_target, max_len)
@@ -40,18 +72,20 @@ class VarianceAdaptor(nn.Module):
             duration_rounded = torch.clamp(torch.round(torch.exp(log_duration_prediction)-hp.log_offset), min=0)
             x, mel_len = self.length_regulator(x, duration_rounded, max_len)
             mel_mask = utils.get_mask_from_lengths(mel_len)
-        
+            
+        ## Pitch Predictor ##
         pitch_prediction = self.pitch_predictor(x, mel_mask)
         if pitch_target is not None:
-            pitch_embedding = self.pitch_embedding(torch.bucketize(pitch_target, self.pitch_bins))
+            pitch_embedding = self.pitch_embedding(torch.bucketize(pitch_target.detach(), self.pitch_bins.detach()))
         else:
-            pitch_embedding = self.pitch_embedding(torch.bucketize(pitch_prediction, self.pitch_bins))
+            pitch_embedding = self.pitch_embedding(torch.bucketize(pitch_prediction.detach(), self.pitch_bins.detach()))
         
+        ## Energy Predictor ##
         energy_prediction = self.energy_predictor(x, mel_mask)
         if energy_target is not None:
-            energy_embedding = self.energy_embedding(torch.bucketize(energy_target, self.energy_bins))
+            energy_embedding = self.energy_embedding(torch.bucketize(energy_target.detach(), self.energy_bins.detach()))
         else:
-            energy_embedding = self.energy_embedding(torch.bucketize(energy_prediction, self.energy_bins))
+            energy_embedding = self.energy_embedding(torch.bucketize(energy_prediction.detach(), self.energy_bins.detach()))
         
         x = x + pitch_embedding + energy_embedding
         
@@ -99,8 +133,14 @@ class VariancePredictor(nn.Module):
 
     def __init__(self):
         super(VariancePredictor, self).__init__()
-
-        self.input_size = hp.encoder_hidden
+        if hp.use_spk_embed:
+            if hp.spk_embed_integration_type == "concat":
+                self.input_size = hp.encoder_hidden + hp.spk_embed_dim
+            else:
+                self.input_size = hp.encoder_hidden
+        else:
+            self.input_size = hp.encoder_hidden
+            
         self.filter_size = hp.variance_predictor_filter_size
         self.kernel = hp.variance_predictor_kernel_size
         self.conv_output_size = hp.variance_predictor_filter_size

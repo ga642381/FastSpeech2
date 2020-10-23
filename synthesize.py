@@ -12,10 +12,22 @@ from text import text_to_sequence, sequence_to_text
 import hparams as hp
 import utils
 import audio as Audio
+from utils import get_mask_from_lengths
+import soundfile
+
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if hp.use_spk_embed:
+    if hp.dataset == "VCTK":
+        from data import vctk
+        spk_table, inv_spk_table = vctk.get_spk_table()
+        
+    if hp.dataset == "LibriTTS":
+        from data import libritts
+        spk_table, inv_spk_table = libritts.get_spk_table()
 
-def preprocess(text):
+def preprocess(text):        
     text = text.rstrip(punctuation)
 
     g2p = G2p()
@@ -25,7 +37,8 @@ def preprocess(text):
     phone = re.sub(r'\{[^\w\s]?\}', '{sp}', phone)
     phone = phone.replace('}{', ' ')
     
-    print('|' + phone + '|')    
+    print('|' + phone + '|')
+    print(text_to_sequence(phone, hp.text_cleaners))
     sequence = np.array(text_to_sequence(phone, hp.text_cleaners))
     sequence = np.stack([sequence])
 
@@ -33,44 +46,88 @@ def preprocess(text):
 
 def get_FastSpeech2(num):
     checkpoint_path = os.path.join(hp.checkpoint_path, "checkpoint_{}.pth.tar".format(num))
-    model = nn.DataParallel(FastSpeech2())
+    if hp.use_spk_embed:    
+        model = nn.DataParallel(FastSpeech2(True, hp.n_spkers))
+    else:
+        model = nn.DataParallel(FastSpeech2())
+        
     model.load_state_dict(torch.load(checkpoint_path)['model'])
     model.requires_grad = False
     model.eval()
     return model
 
 def synthesize(model, waveglow, melgan, text, sentence, prefix=''):
-    sentence = sentence[:200] # long filename will result in OS Error
-    
+    sentence = sentence[:150] # long filename will result in OS Error
     src_len = torch.from_numpy(np.array([text.shape[1]])).to(device)
+    
+    # create dir
+    if not os.path.exists(os.path.join(hp.test_path, hp.dataset)):
+        os.makedirs(os.path.join(hp.test_path, hp.dataset))    
+    
+    # generate wav
+    if hp.use_spk_embed:
+        hp.batch_size = 1
+        spk_ids = torch.tensor(list(inv_spk_table.keys())[9:hp.batch_size+9]).to(torch.int64).to(device)
+        text = text.repeat(hp.batch_size, 1)
+        src_len = src_len.repeat(hp.batch_size)
+        mel, mel_postnet, log_duration_output, f0_output, energy_output, _, _, mel_len = model(text, src_len, speaker_ids=spk_ids)
         
-    mel, mel_postnet, log_duration_output, f0_output, energy_output, _, _, mel_len = model(text, src_len)
-    
-    mel_torch = mel.transpose(1, 2).detach()
-    mel_postnet_torch = mel_postnet.transpose(1, 2).detach()
-    mel = mel[0].cpu().transpose(0, 1).detach()
-    mel_postnet = mel_postnet[0].cpu().transpose(0, 1).detach()
-    f0_output = f0_output[0].detach().cpu().numpy()
-    energy_output = energy_output[0].detach().cpu().numpy()
+        mel_mask = get_mask_from_lengths(mel_len, None)
+        mel_mask = mel_mask.unsqueeze(-1).expand(mel_postnet.size())
+        silence = (torch.ones(mel_postnet.size()) * -5).to(device)
+        mel = torch.where(~mel_mask, mel, silence)
+        mel_postnet = torch.where(~mel_mask, mel_postnet, silence)
+        
+        mel_torch = mel.transpose(1, 2).detach()
+        mel_postnet_torch = mel_postnet.transpose(1, 2).detach()
 
-    if not os.path.exists(hp.test_path):
-        os.makedirs(hp.test_path)
-
-    Audio.tools.inv_mel_spec(mel_postnet, os.path.join(hp.test_path, '{}_griffin_lim_{}.wav'.format(prefix, sentence)))
-    if waveglow is not None:
-        utils.waveglow_infer(mel_postnet_torch, waveglow, os.path.join(hp.test_path, '{}_{}_{}.wav'.format(prefix, hp.vocoder, sentence)))
-    if melgan is not None:
-        utils.melgan_infer(mel_postnet_torch, melgan, os.path.join(hp.test_path, '{}_{}_{}.wav'.format(prefix, hp.vocoder, sentence)))
-    
-    utils.plot_data([(mel_postnet.numpy(), f0_output, energy_output)], ['Synthesized Spectrogram'], filename=os.path.join(hp.test_path, '{}_{}.png'.format(prefix, sentence)))
+        if waveglow is not None:
+            wavs = utils.waveglow_infer_batch(mel_postnet_torch, waveglow)
+        if melgan is not None:
+            wavs = utils.melgan_infer_batch(mel_postnet_torch, melgan)        
+            
+        for i, spk_id in enumerate(spk_ids):
+            spker = inv_spk_table[int(spk_id)]
+            mel_postnet_i = mel_postnet[i].cpu().transpose(0, 1).detach()
+            f0_i = f0_output[i].detach().cpu().numpy()
+            energy_i = energy_output[i].detach().cpu().numpy()
+            mel_mask_i = mel_mask[i]
+            wav_i = wavs[i]
+            
+            # output
+            base_dir_i = os.path.join(hp.test_path, hp.dataset, "step {}".format(args.step), spker)
+            os.makedirs(base_dir_i, exist_ok=True)
+            path_i = os.path.join(base_dir_i, '{}_{}_{}.wav'.format(prefix, hp.vocoder, sentence))
+            soundfile.write(path_i, wav_i, hp.sampling_rate)
+            utils.plot_data([(mel_postnet_i.numpy(), f0_i, energy_i)], 
+                            ['Synthesized Spectrogram'], 
+                            filename=os.path.join(base_dir_i, '{}_{}.png'.format(prefix, sentence)))
+            
+    else:
+        spk_ids = None
+        mel, mel_postnet, log_duration_output, f0_output, energy_output, _, _, mel_len = model(text, src_len, speaker_ids=spk_ids)
+        mel_torch = mel.transpose(1, 2).detach()
+        mel_postnet_torch = mel_postnet.transpose(1, 2).detach()
+        mel = mel[0].cpu().transpose(0, 1).detach()
+        mel_postnet = mel_postnet[0].cpu().transpose(0, 1).detach()
+        f0_output = f0_output[0].detach().cpu().numpy()
+        energy_output = energy_output[0].detach().cpu().numpy()
+        
+        Audio.tools.inv_mel_spec(mel_postnet, os.path.join(hp.test_path, '{}_griffin_lim_{}.wav'.format(prefix, sentence)))
+        if waveglow is not None:
+            utils.waveglow_infer(mel_postnet_torch, waveglow, os.path.join(hp.test_path, hp.dataset, '{}_{}_{}_{}.wav'.format(prefix, hp.vocoder, spker, sentence)))
+        if melgan is not None:
+            utils.melgan_infer(mel_postnet_torch, melgan, os.path.join(hp.test_path, hp.dataset, '{}_{}_{}_{}.wav'.format(prefix, hp.vocoder, spker, sentence)))
+        
+        utils.plot_data([(mel_postnet.numpy(), f0_output, energy_output)], ['Synthesized Spectrogram'], filename=os.path.join(hp.test_path, '{}_{}.png'.format(prefix, sentence)))
 
 
 if __name__ == "__main__":
     # Test
     parser = argparse.ArgumentParser()
-    parser.add_argument('--step', type=int, default=30000)
+    parser.add_argument('--step', type=int, default=200000)
     args = parser.parse_args()
-    
+    """
     sentences = [
         "Advanced text to speech models such as Fast Speech can synthesize speech significantly faster than previous auto regressive models with comparable quality. The training of Fast Speech model relies on an auto regressive teacher model for duration prediction and knowledge distillation, which can ease the one to many mapping problem in T T S. However, Fast Speech has several disadvantages, 1, the teacher student distillation pipeline is complicated, 2, the duration extracted from the teacher model is not accurate enough, and the target mel spectrograms distilled from teacher model suffer from information loss due to data simplification, both of which limit the voice quality.",
         "Printing, in the only sense with which we are at present concerned, differs from most if not from all the arts and crafts represented in the Exhibition",
@@ -84,12 +141,33 @@ if __name__ == "__main__":
         "Printing, then, for our purpose, may be considered as the art of making books by means of movable types.",
         "Now, as all books not primarily intended as picture-books consist principally of types composed to form letterpress,"
         ]
-
+    
+    sentences = [
+        "Big brother is always right.",
+        "In the mammalian nervous system, billions of neurons connected by quadrillions of synapses exchange electrical, chemical and mechanical signals."
+        ]
+    """
+    sentences = [
+        """Encouraged by the success of deep neural networks on a variety of visual tasks,
+much theoretical and experimental work has been aimed at understanding and interpreting how vision networks operate. Meanwhile, deep neural networks have
+also achieved impressive performance in audio processing applications, both as
+sub-components of larger systems and as complete end-to-end systems by themselves. Despite their empirical successes, comparatively little is understood about
+how these audio models accomplish these tasks. In this work, we employ a recently developed statistical mechanical theory that connects geometric properties
+of network representations and the separability of classes to probe how information is untangled within neural networks trained to recognize speech. We observe
+that speaker-specific nuisance variations are discarded by the network’s hierarchy,
+whereas task-relevant properties such as words and phonemes are untangled in
+later layers. Higher level concepts such as parts-of-speech and context dependence also emerge in the later layers of the network. Finally, we find that the deep
+representations carry out significant temporal untangling by efficiently extracting
+task-relevant features at each time step of the computation. Taken together, these
+findings shed light on how deep auditory models process time dependent input
+signals to achieve invariant speech recognition, and show how different concepts
+emerge through the layers of the network."""
+]
     model = get_FastSpeech2(args.step).to(device)
     melgan = waveglow = None
     if hp.vocoder == 'melgan':
         melgan = utils.get_melgan()
-        melgan.to(device)
+        #melgan.to(device)
     elif hp.vocoder == 'waveglow':
         waveglow = utils.get_waveglow()
         waveglow.to(device)
