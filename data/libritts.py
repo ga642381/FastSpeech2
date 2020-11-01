@@ -9,6 +9,8 @@ from utils import get_alignment
 from text import _clean_text
 import librosa
 import hparams as hp
+import random
+from pathlib import Path
 
 ### spk table ###
 def get_spk_table():
@@ -18,6 +20,7 @@ def get_spk_table():
     '''
     spk_table = {}
     spk_id = 0
+    
     spks = os.listdir(hp.data_path)
     spks.sort()
     for spk in spks:
@@ -28,19 +31,21 @@ def get_spk_table():
 
 ### prepare align ###
 def prepare_align(in_dir):
-    for spker in tqdm(os.listdir(in_dir)):
-        files = os.listdir(os.path.join(in_dir, spker))
-        txt_files = [f for f in files if f.endswith(".normalized.txt")]
-        for txt_file in txt_files:
-            with open(os.path.join(in_dir, spker, txt_file), encoding='utf-8') as f:
-                lines = f.readlines()
-                assert(len(lines) == 1)
-                basename = txt_file.replace(".normalized.txt", "")
-                text = lines[0]
-                text = _clean_text(text, hp.text_cleaners)
-                with open(os.path.join(in_dir, spker, '{}.txt'.format(basename)), 'w') as f1:
-                    f1.write(text)                
-
+    for dirpath, dirnames, filenames in os.walk(in_dir):
+        for file in filenames:
+            if file.endswith(".normalized.txt"):
+                path_in  = os.path.join(dirpath, file)
+                with open(path_in, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    assert(len(lines) == 1)
+                    text = lines[0]
+                    text = _clean_text(text, hp.text_cleaners)
+                    
+                path_out = os.path.join(dirpath, file.replace(".normalized.txt", ".txt"))
+                with open(path_out, 'w', encoding='utf-8') as f:
+                    f.write(text)
+                    
+### Creating dataset ###
 def build_from_path(in_dir, out_dir):
     train = list()
     val = list()
@@ -54,26 +59,41 @@ def build_from_path(in_dir, out_dir):
     
     if not os.path.exists(os.path.join(out_dir, "TextGrid")):
         raise FileNotFoundError("\"TextGird\" not found in {}".format(out_dir))
-    
+    random.seed(829)
     for spker in tqdm(spkers):
-        files = os.listdir(os.path.join(in_dir, spker))
-        txt_files = [f for f in files if f.endswith(".normalized.txt")]
-        for txt_file in txt_files:
-            basename = txt_file.replace(".normalized.txt", "")
-            ret = process_utterance(in_dir, out_dir, spker, basename)
+        spker_dir = os.path.join(in_dir, spker)
+        file_paths = []
+        for dirpath, dirnames, filenames in os.walk(spker_dir):
+            for f in filenames:
+                if f.endswith(".normalized.txt"):
+                    subdir = Path(dirpath).relative_to(in_dir)
+                    file_paths.append((subdir, f))
+
+        random.shuffle(file_paths)
+        for i, file_path in enumerate(file_paths):
+            subdir = file_path[0]
+            filename = file_path[1]
+            basename = filename.replace(".normalized.txt", "")
+            
+            ret = process_utterance(in_dir, out_dir, subdir, basename)
+            
             if ret is None:
                 continue
             else:
                 info, f_max, f_min, e_max, e_min, n = ret
-            train.append(info)
-            
+                
+            if i == 0: 
+                val.append(info)
+            else:
+                train.append(info)
+                
             f0_max = max(f0_max, f_max)
             f0_min = min(f0_min, f_min)
             energy_max = max(energy_max, e_max)
             energy_min = min(energy_min, e_min)
             n_frames += n                
             
-            
+    ### Write Stats ###
     with open(os.path.join(out_dir, 'stat.txt'), 'w', encoding='utf-8') as f:
         strs = ['Total time: {} hours'.format(n_frames*hp.hop_length/hp.sampling_rate/3600),
                 'Total frames: {}'.format(n_frames),
@@ -85,12 +105,12 @@ def build_from_path(in_dir, out_dir):
             print(s)
             f.write(s+'\n')
     
-    return [r for r in train if r is not None], [r for r in val if r is not None]                    
+    return [r for r in train if r is not None], [r for r in val if r is not None]
 
-def process_utterance(in_dir, out_dir, spker, basename):
-    wav_path = os.path.join(in_dir, spker, '{}.wav'.format(basename))
-    tg_path = os.path.join(out_dir, 'TextGrid', spker, '{}.TextGrid'.format(basename))
-    
+def process_utterance(in_dir, out_dir, dirname, basename):
+    wav_path = os.path.join(in_dir , dirname   , '{}.wav'.format(basename))
+    tg_path  = os.path.join(out_dir, 'TextGrid', dirname, '{}.TextGrid'.format(basename))
+
     if not os.path.exists(tg_path):
         return None
         

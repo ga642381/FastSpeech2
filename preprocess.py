@@ -1,44 +1,127 @@
 import os
-from data import ljspeech, blizzard2013, vctk, libritts
 import hparams as hp
+import argparse
 
-def write_metadata(train, val, out_dir):
-    with open(os.path.join(out_dir, 'train.txt'), 'w', encoding='utf-8') as f:
-        for m in train:
-            f.write(m + '\n')
-    with open(os.path.join(out_dir, 'val.txt'), 'w', encoding='utf-8') as f:
-        for m in val:
-            f.write(m + '\n')
-
-def main():
-    in_dir = hp.data_path
-    out_dir = hp.preprocessed_path
-    mel_out_dir = os.path.join(out_dir, "mel")
-    if not os.path.exists(mel_out_dir):
-        os.makedirs(mel_out_dir, exist_ok=True)
-    ali_out_dir = os.path.join(out_dir, "alignment")
-    if not os.path.exists(ali_out_dir):
-        os.makedirs(ali_out_dir, exist_ok=True)
-    f0_out_dir = os.path.join(out_dir, "f0")
-    if not os.path.exists(f0_out_dir):
-        os.makedirs(f0_out_dir, exist_ok=True)
-    energy_out_dir = os.path.join(out_dir, "energy")
-    if not os.path.exists(energy_out_dir):
-        os.makedirs(energy_out_dir, exist_ok=True)
+if hp.dataset == "LJSpeech":
+    from data import ljspeech as Dataset
+elif hp.dataset == "Blizzard2013":
+    from data import blizzard2013 as Dataset
+elif hp.dataset == "VCTK":
+    from data import vctk as Dataset
+elif hp.dataset == "LibriTTS":
+    from data import libritts as Dataset
+else:
+    raise NotImplementedError("You should specify the dataset in hparams.py\
+                              and write a corresponding file in data/")
+                              
+class Preprocessor():
+    def __init__(self, args):
+        self.args = args
+        self.in_dir  = hp.data_path
+        self.out_dir = hp.preprocessed_path
+        self.mfa_path = hp.mfa_path
+    
+    def exec(self):
+        self.print_message()
+        key_input = ""
+        while key_input  not in ["y", "Y", "n", "N"]:
+            key_input = input("Proceed? ([y/n])? ")
+            
+        if key_input in ['y', 'Y']:
+            self.make_output_dirs(force=False)
+            if self.args.prepare_align:
+                print("Preparing alignment text data...")
+                self.prepare_align()
+                
+            if self.args.mfa:
+                print("Performing Montreal Force Alignment...")
+                self.mfa()
+                
+            if self.args.create_dataset:
+                print("Creating Training and Validation Dataset...")
+                self.create_dataset()
+            
+    def print_message(self):
+        print("\n")
+        print("------ Preprocessing ------")
+        print(f"* Dataset     : {hp.dataset}")
+        print(f"* Data path   : {self.in_dir}")
+        print(f"* Output path : {self.out_dir}")
+        print("\n")
+        print("The following will be executed:")
+        #print("\n")
+        if self.args.prepare_align:
+            print("\t* Preparing Alignment Data")
+        if self.args.mfa:
+            print("\t* Montreal Force Alignmnet")
+        if self.args.create_dataset:
+            print("\t* Creating Training Dataset")
+        print("\n")
+            
+    def make_output_dirs(self, force=False):
+        out_dir = self.out_dir
+        if self.args.mfa:
+            mfa_out_dir = os.path.join(out_dir, "TextGrid")
+            os.makedirs(mfa_out_dir, exist_ok=force)
         
-    print("\nStart preprocessing...")
-    print("Data directory : {}".format(in_dir))
-    print("Processed data directory : {}\n".format(out_dir))
+        mel_out_dir = os.path.join(out_dir, "mel")
+        os.makedirs(mel_out_dir, exist_ok=force)
+        
+        ali_out_dir = os.path.join(out_dir, "alignment")
+        os.makedirs(ali_out_dir, exist_ok=force)
+        
+        f0_out_dir = os.path.join(out_dir, "f0")
+        os.makedirs(f0_out_dir, exist_ok=force)
+        
+        energy_out_dir = os.path.join(out_dir, "energy")
+        os.makedirs(energy_out_dir, exist_ok=force)
+        
+    ### Preprocessing ###
+    def create_dataset(self):
+        '''
+        1. train and val meta will be obtained here
+        2. during "build_fron_path", alignment, f0, energy and mel data will be created
+        '''
+        in_dir = self.in_dir
+        out_dir = self.out_dir
+        
+        train, val = Dataset.build_from_path(in_dir, out_dir)
+        with open(os.path.join(out_dir, 'train.txt'), 'w', encoding='utf-8') as f:
+            for m in train:
+                f.write(m + '\n')
+        with open(os.path.join(out_dir, 'val.txt'), 'w', encoding='utf-8') as f:
+            for m in val:
+                f.write(m + '\n')
+                
+    ### Prepare Align
+    def prepare_align(self):
+        in_dir = self.in_dir
+        Dataset.prepare_align(in_dir)
+    
+    ### MFA ###
+    def mfa(self):
+        in_dir = self.in_dir
+        out_dir = self.out_dir
+        mfa_path = self.mfa_path
+        
+        mfa_out_dir = os.path.join(out_dir, "TextGrid")
+        mfa_bin_path = os.path.join(mfa_path, "bin", "mfa_align")
+        mfa_pretrain_path = os.path.join(mfa_path, "pretrained_models", "librispeech-lexicon.txt")
+        cmd = f"{mfa_bin_path} {in_dir} {mfa_pretrain_path} english {mfa_out_dir} -j 8"
+        os.system(cmd)    
 
-    if hp.dataset == "LJSpeech":
-        train, val = ljspeech.build_from_path(in_dir, out_dir)
-    if hp.dataset == "Blizzard2013":
-        train, val = blizzard2013.build_from_path(in_dir, out_dir)
-    if hp.dataset == "VCTK":
-        train, val = vctk.build_from_path(in_dir, out_dir)
-    if hp.dataset == "LibriTTS":
-        train, val = libritts.build_from_path(in_dir, out_dir)
-    write_metadata(train, val, out_dir)
+def main(args):
+    P = Preprocessor(args)
+    P.exec()
     
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--prepare_align', action="store_true", default=True)
+    parser.add_argument('--mfa', action="store_true", default=True)
+    parser.add_argument('--create_dataset', action="store_true", default=True)
+    args = parser.parse_args()
+    
+    args.prepare_align = False
+    args.mfa = False
+    args.create_dataset = True
+    main(args)

@@ -15,11 +15,21 @@ from optimizer import ScheduledOptim
 from evaluate import evaluate
 import hparams as hp
 import utils
-import audio as Audio
+import vocoder
 
+class Trainer():
+    def __init__(self):
+        torch.manual_seed(0)
+        self.device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
+        
+        
+    def init_dataset(self):
+        dataset = Dataset("train.txt")
+        loader = DataLoader(dataset, batch_size=hp.batch_size**2, shuffle=True, 
+                            collate_fn=dataset.collate_fn, drop_last=True, num_workers=0)
+        
 def main(args):
     torch.manual_seed(0)
-
     # Get device
     device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
     
@@ -30,7 +40,8 @@ def main(args):
     
     # Define model
     if hp.use_spk_embed:
-        model = nn.DataParallel(FastSpeech2(n_spkers=hp.n_spkers)).to(device)
+        n_pkers = len(dataset.spk_table.keys())
+        model = nn.DataParallel(FastSpeech2(n_spkers=n_pkers)).to(device)
     else:
         model = nn.DataParallel(FastSpeech2()).to(device)
         
@@ -100,13 +111,14 @@ def main(args):
 
                 current_step = i*hp.batch_size + j + args.restore_step + epoch*len(loader)*hp.batch_size + 1
                 print("step : {}".format(current_step), end='\r', flush=True)
-                # Get Data
-                text = torch.from_numpy(data_of_batch["text"]).long().to(device)
+                
+                
+                ### Get Data ###
                 if hp.use_spk_embed:
                     spk_ids = torch.tensor(data_of_batch["spk_ids"]).to(torch.int64).to(device)
                 else:
                     spk_ids = None
-
+                text = torch.from_numpy(data_of_batch["text"]).long().to(device)
                 mel_target = torch.from_numpy(data_of_batch["mel_target"]).float().to(device)
                 D = torch.from_numpy(data_of_batch["D"]).long().to(device)
                 log_D = torch.from_numpy(data_of_batch["log_D"]).float().to(device)
@@ -117,16 +129,15 @@ def main(args):
                 max_src_len = np.max(data_of_batch["src_len"]).astype(np.int32)
                 max_mel_len = np.max(data_of_batch["mel_len"]).astype(np.int32)
                 
-                # Forward
+                ### Forward ###
                 mel_output, mel_postnet_output, log_duration_output, f0_output, energy_output, src_mask, mel_mask, _ = model(
                     text, src_len, mel_len, D, f0, energy, max_src_len, max_mel_len, spk_ids)
                 
-                # Cal Loss
+                ### Cal Loss ###
                 mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss = Loss(
                         log_duration_output, log_D, f0_output, f0, energy_output, energy, mel_output, mel_postnet_output, mel_target, ~src_mask, ~mel_mask)
                 total_loss = mel_loss + mel_postnet_loss + d_loss + 0.01*f_loss + 0.1*e_loss
-                 
-                # Logger
+
                 t_l = total_loss.item()
                 m_l = mel_loss.item()
                 m_p_l = mel_postnet_loss.item()
@@ -146,20 +157,18 @@ def main(args):
                 with open(os.path.join(log_path, "energy_loss.txt"), "a") as f_e_loss:
                     f_e_loss.write(str(e_l)+"\n")
                  
-                # Backward
+                ## Backward
                 total_loss = total_loss / hp.acc_steps
                 total_loss.backward()
                 if current_step % hp.acc_steps != 0:
                     continue
 
-                # Clipping gradients to avoid gradient explosion
+                ### Update weights ###
                 nn.utils.clip_grad_norm_(model.parameters(), hp.grad_clip_thresh)
-
-                # Update weights
                 scheduled_optim.step_and_update_lr()
                 scheduled_optim.zero_grad()
                 
-                # Print
+                ### Print ###
                 if current_step % hp.log_step == 0:
                     Now = time.perf_counter()
 
@@ -187,13 +196,13 @@ def main(args):
                     train_logger.add_scalar('Loss/F0_loss', f_l, current_step)
                     train_logger.add_scalar('Loss/energy_loss', e_l, current_step)
                 
-                # Save model
+                ### Save model ###
                 if current_step % hp.save_step == 0:
                     torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(
                     )}, os.path.join(checkpoint_path, 'checkpoint_{}.pth.tar'.format(current_step)))
                     print("save model at step {} ...".format(current_step))
                 
-                # Synth
+                ### Synth ###
                 if current_step % hp.synth_step == 0:
                     length = mel_len[0].item()
                     print("step: {} , length {}, {}".format(current_step, length, mel_len))
@@ -205,30 +214,16 @@ def main(args):
                     mel_postnet = mel_postnet_output[0, :length].detach().cpu().transpose(0, 1)
                     
                     spk_id = dataset.inv_spk_table[int(spk_ids[0])]
+                    if hp.vocoder == 'melgan':
+                        vocoder.melgan_infer(mel_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_{}.wav'.format(current_step, spk_id, hp.vocoder)))
+                        vocoder.melgan_infer(mel_postnet_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_postnet_{}.wav'.format(current_step, spk_id, hp.vocoder)))
+                        vocoder.melgan_infer(mel_target_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_ground-truth_{}.wav'.format(current_step, spk_id, hp.vocoder)))
                     
-                    if hp.use_spk_embed:
-                        if hp.vocoder == 'melgan':
-                            utils.melgan_infer(mel_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                            utils.melgan_infer(mel_postnet_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_postnet_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                            utils.melgan_infer(mel_target_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_ground-truth_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                        elif hp.vocoder == 'waveglow':
-                            utils.waveglow_infer(mel_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_{}.wav'.format(current_step, hp.vocoder)))
-                            utils.waveglow_infer(mel_postnet_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_postnet_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                            utils.waveglow_infer(mel_target_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_ground-truth_{}.wav'.format(current_step, spk_id, hp.vocoder)))
+                    elif hp.vocoder == 'waveglow':
+                        vocoder.waveglow_infer(mel_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_{}.wav'.format(current_step, hp.vocoder)))
+                        vocoder.waveglow_infer(mel_postnet_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_postnet_{}.wav'.format(current_step, spk_id, hp.vocoder)))
+                        vocoder.waveglow_infer(mel_target_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_ground-truth_{}.wav'.format(current_step, spk_id, hp.vocoder)))
                     
-                    else :
-                        Audio.tools.inv_mel_spec(mel, os.path.join(synth_path, "step_{}_griffin_lim.wav".format(current_step)))
-                        Audio.tools.inv_mel_spec(mel_postnet, os.path.join(synth_path, "step_{}_postnet_griffin_lim.wav".format(current_step)))
-                        
-                        if hp.vocoder == 'melgan':
-                            utils.melgan_infer(mel_torch, melgan, os.path.join(hp.synth_path, 'step_{}_{}.wav'.format(current_step, hp.vocoder)))
-                            utils.melgan_infer(mel_postnet_torch, melgan, os.path.join(hp.synth_path, 'step_{}_postnet_{}.wav'.format(current_step, hp.vocoder)))
-                            utils.melgan_infer(mel_target_torch, melgan, os.path.join(hp.synth_path, 'step_{}_ground-truth_{}.wav'.format(current_step, hp.vocoder)))
-                        elif hp.vocoder == 'waveglow':
-                            utils.waveglow_infer(mel_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_{}.wav'.format(current_step, hp.vocoder)))
-                            utils.waveglow_infer(mel_postnet_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_postnet_{}.wav'.format(current_step, hp.vocoder)))
-                            utils.waveglow_infer(mel_target_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_ground-truth_{}.wav'.format(current_step, hp.vocoder)))
-                            
                     f0 = f0[0, :length].detach().cpu().numpy()
                     energy = energy[0, :length].detach().cpu().numpy()
                     f0_output = f0_output[0, :length].detach().cpu().numpy()
@@ -237,6 +232,7 @@ def main(args):
                     utils.plot_data([(mel_postnet.numpy(), f0_output, energy_output), (mel_target.numpy(), f0, energy)], 
                         ['Synthetized Spectrogram', 'Ground-Truth Spectrogram'], filename=os.path.join(synth_path, 'step_{}.png'.format(current_step)))
                 
+                ### Evaluation ###
                 if current_step % hp.eval_step == 0:
                     model.eval()
                     with torch.no_grad():
@@ -252,6 +248,7 @@ def main(args):
 
                     model.train()
 
+                ### Time ###
                 end_time = time.perf_counter()
                 Time = np.append(Time, end_time - start_time)
                 if len(Time) == hp.clear_Time:

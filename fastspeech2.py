@@ -22,7 +22,6 @@ class FastSpeech2(nn.Module):
             self.n_spkers = n_spkers
             self.spk_embed_dim = hp.spk_embed_dim
             self.spk_embed_weight_std = hp.spk_embed_weight_std
-            
             self.embed_speakers = Embedding(n_spkers, self.spk_embed_dim, padding_idx=None, std=self.spk_embed_weight_std)
         
         ### Encoder, Speaker Integrator, Variance Adaptor, Deocder, Postnet ###

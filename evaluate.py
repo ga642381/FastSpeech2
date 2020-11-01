@@ -15,6 +15,7 @@ from text import text_to_sequence, sequence_to_text
 import hparams as hp
 import utils
 import audio as Audio
+import vocoder
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -47,19 +48,19 @@ def evaluate(model, step, vocoder=None):
     for i, batchs in enumerate(loader):
         for j, data_of_batch in enumerate(batchs):
             # Get Data
-            id_ = data_of_batch["id"]
             if hp.use_spk_embed:
-                spk_ids = torch.tensor(list(range(1, 1+len(batchs)))).to(torch.int64).to(device)
+                spk_ids = torch.tensor(data_of_batch["spk_ids"]).to(torch.int64).to(device)
             else:
-                spk_ids = None
-            text = torch.from_numpy(data_of_batch["text"]).long().to(device)
-            mel_target = torch.from_numpy(data_of_batch["mel_target"]).float().to(device)
-            D = torch.from_numpy(data_of_batch["D"]).int().to(device)
-            log_D = torch.from_numpy(data_of_batch["log_D"]).int().to(device)
-            f0 = torch.from_numpy(data_of_batch["f0"]).float().to(device)
-            energy = torch.from_numpy(data_of_batch["energy"]).float().to(device)
-            src_len = torch.from_numpy(data_of_batch["src_len"]).long().to(device)
-            mel_len = torch.from_numpy(data_of_batch["mel_len"]).long().to(device)
+                spk_ids = None            
+            id_ = data_of_batch["id"]
+            text        = torch.from_numpy(data_of_batch["text"]).long().to(device)
+            mel_target  = torch.from_numpy(data_of_batch["mel_target"]).float().to(device)
+            D           = torch.from_numpy(data_of_batch["D"]).int().to(device)
+            log_D       = torch.from_numpy(data_of_batch["log_D"]).int().to(device)
+            f0          = torch.from_numpy(data_of_batch["f0"]).float().to(device)
+            energy      = torch.from_numpy(data_of_batch["energy"]).float().to(device)
+            src_len     = torch.from_numpy(data_of_batch["src_len"]).long().to(device)
+            mel_len     = torch.from_numpy(data_of_batch["mel_len"]).long().to(device)
             max_src_len = np.max(data_of_batch["src_len"]).astype(np.int32)
             max_mel_len = np.max(data_of_batch["mel_len"]).astype(np.int32)
         
@@ -92,17 +93,17 @@ def evaluate(model, step, vocoder=None):
                         mel_postnet = mel_postnet_output[k, :out_length].cpu().transpose(0, 1).detach()
                         
                         if hp.vocoder == 'melgan':
-                            utils.melgan_infer(mel_target_torch, vocoder, os.path.join(hp.eval_path, 'ground-truth_{}_{}.wav'.format(basename, hp.vocoder)))
-                            utils.melgan_infer(mel_postnet_torch, vocoder, os.path.join(hp.eval_path, 'eval_{}_{}.wav'.format(basename, hp.vocoder)))
+                            vocoder.melgan_infer(mel_target_torch, vocoder, os.path.join(hp.eval_path, 'ground-truth_{}_{}.wav'.format(basename, hp.vocoder)))
+                            vocoder.melgan_infer(mel_postnet_torch, vocoder, os.path.join(hp.eval_path, 'eval_{}_{}.wav'.format(basename, hp.vocoder)))
                         elif hp.vocoder == 'waveglow':
-                            utils.waveglow_infer(mel_target_torch, vocoder, os.path.join(hp.eval_path, 'ground-truth_{}_{}.wav'.format(basename, hp.vocoder)))
-                            utils.waveglow_infer(mel_postnet_torch, vocoder, os.path.join(hp.eval_path, 'eval_{}_{}.wav'.format(basename, hp.vocoder)))
+                            vocoder.waveglow_infer(mel_target_torch, vocoder, os.path.join(hp.eval_path, 'ground-truth_{}_{}.wav'.format(basename, hp.vocoder)))
+                            vocoder.waveglow_infer(mel_postnet_torch, vocoder, os.path.join(hp.eval_path, 'eval_{}_{}.wav'.format(basename, hp.vocoder)))
         
                         np.save(os.path.join(hp.eval_path, 'eval_{}_mel.npy'.format(basename)), mel_postnet.numpy())
                         
-                        f0_ = f0[k, :gt_length].detach().cpu().numpy()
-                        energy_ = energy[k, :gt_length].detach().cpu().numpy()
-                        f0_output_ = f0_output[k, :out_length].detach().cpu().numpy()
+                        f0_            = f0[k, :gt_length].detach().cpu().numpy()
+                        energy_        = energy[k, :gt_length].detach().cpu().numpy()
+                        f0_output_     = f0_output[k, :out_length].detach().cpu().numpy()
                         energy_output_ = energy_output[k, :out_length].detach().cpu().numpy()
                         
                         utils.plot_data([(mel_postnet.numpy(), f0_output_, energy_output_), (mel_target_.numpy(), f0_, energy_)], 
@@ -156,9 +157,9 @@ if __name__ == "__main__":
     
     # Load vocoder
     if hp.vocoder == 'melgan':
-        vocoder = utils.get_melgan()
+        vocoder = vocoder.get_melgan()
     elif hp.vocoder == 'waveglow':
-        vocoder = utils.get_waveglow()
+        vocoder = vocoder.get_waveglow()
     vocoder.to(device)
         
     # Init directories

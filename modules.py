@@ -25,17 +25,15 @@ class SpeakerIntegrator(nn.Module):
     """ Speaker Integrator """
     def __init__(self):
         super(SpeakerIntegrator, self).__init__()
-        self.spk_embed_integration_type = hp.spk_embed_integration_type
     
     def forward(self, x, spembs):
-        if self.spk_embed_integration_type == "add":
-            pass
-        elif self.spk_embed_integration_type == "concat":
-            spembs = torch.unsqueeze(spembs, 1)
-            spembs = spembs.repeat(1, x.shape[1], 1)
-            x = torch.cat((x, spembs), 2)
-        else:
-            raise NotImplementedError("support only add or concat.")
+        '''
+        x shape : (batch, 39, 256)
+        spembs shape : (batch, 256)
+        '''
+        spembs = spembs.unsqueeze(1)
+        spembs = spembs.repeat(1,x.shape[1] ,1)
+        x = x + spembs
             
         return x
         
@@ -52,16 +50,8 @@ class VarianceAdaptor(nn.Module):
         
         self.pitch_bins = nn.Parameter(torch.exp(torch.linspace(np.log(hp.f0_min), np.log(hp.f0_max), hp.n_bins-1)))
         self.energy_bins = nn.Parameter(torch.linspace(hp.energy_min, hp.energy_max, hp.n_bins-1))
-        if hp.use_spk_embed:
-            if hp.spk_embed_integration_type == "concat":
-                self.pitch_embedding  = nn.Embedding(hp.n_bins, hp.encoder_hidden + hp.spk_embed_dim)
-                self.energy_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden + hp.spk_embed_dim)
-            else:
-                self.pitch_embedding  = nn.Embedding(hp.n_bins, hp.encoder_hidden)
-                self.energy_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden)
-        else:
-            self.pitch_embedding  = nn.Embedding(hp.n_bins, hp.encoder_hidden)
-            self.energy_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden)
+        self.pitch_embedding  = nn.Embedding(hp.n_bins, hp.encoder_hidden)
+        self.energy_embedding = nn.Embedding(hp.n_bins, hp.encoder_hidden)
             
     def forward(self, x, src_mask, mel_mask=None, duration_target=None, pitch_target=None, energy_target=None, max_len=None):
         ## Duration Predictor ##
@@ -133,14 +123,7 @@ class VariancePredictor(nn.Module):
 
     def __init__(self):
         super(VariancePredictor, self).__init__()
-        if hp.use_spk_embed:
-            if hp.spk_embed_integration_type == "concat":
-                self.input_size = hp.encoder_hidden + hp.spk_embed_dim
-            else:
-                self.input_size = hp.encoder_hidden
-        else:
-            self.input_size = hp.encoder_hidden
-            
+        self.input_size = hp.encoder_hidden
         self.filter_size = hp.variance_predictor_filter_size
         self.kernel = hp.variance_predictor_kernel_size
         self.conv_output_size = hp.variance_predictor_filter_size
