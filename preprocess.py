@@ -116,12 +116,9 @@ def main(args):
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--prepare_align', action="store_true", default=True)
-    parser.add_argument('--mfa', action="store_true", default=True)
-    parser.add_argument('--create_dataset', action="store_true", default=True)
+    parser.add_argument('--prepare_align', action="store_true", default=False)
+    parser.add_argument('--mfa', action="store_true", default=False)
+    parser.add_argument('--create_dataset', action="store_true", default=False)
     args = parser.parse_args()
     
-    args.prepare_align = False
-    args.mfa = False
-    args.create_dataset = True
     main(args)
