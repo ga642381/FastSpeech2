@@ -1,6 +1,19 @@
-# FastSpeech 2 - Pytorch Implementation
+<p align="center">
+    <br>
+    <img src="https://raw.githubusercontent.com/ga642381/ga642381.github.io/main/assets/KW_Speech_logo.png" width="250"/>
+    <br>
+</p>
+<p>
+  <h3 align="center">
+  Multi-Speaker FastSpeech 2 - PyTorch
+  </h3>
+</p>
 
-* This is a Pytorch implementation of Microsoft's text-to-speech system [**FastSpeech 2: Fast and High-Quality End-to-End Text to Speech**](https://arxiv.org/abs/2006.04558). 
+</br>
+
+## FastSpeech 2 - PyTorch Implementation
+
+* This is a PyTorch implementation of Microsoft's text-to-speech system [**FastSpeech 2: Fast and High-Quality End-to-End Text to Speech**](https://arxiv.org/abs/2006.04558). 
 
 * This project is based on [ming024's implementation](https://github.com/ming024/FastSpeech2). Any suggestion for improvement is appreciated.
 
