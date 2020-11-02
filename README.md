@@ -19,18 +19,24 @@
 
 * Now supporting about **900 speakers** in :fire: **LibriTTS** for multi-speaker text-to-speech.
 
+<p align="center">
+    <br>
+    <img src="https://raw.githubusercontent.com/ga642381/ga642381.github.io/main/assets/FastSpeech2.png" width="800"/>
+    <br>
+</p>
+
 ## Datasets :elephant:
 This project supports 4 datasets, including muti-speaker datasets and single-speaker datasets:
 
-### Multi-Speaker
-:fire: **LibriTTS**
+### :fire: Multi-Speaker
+- **LibriTTS**
 
-:fire: **VCTK**
+- **VCTK**
 
-### Single-Speaker
-:fire: **LJSpeech**
+### :fire: Single-Speaker
+- **LJSpeech**
 
-:fire: **Blizzard2013**
+- **Blizzard2013**
 
 After downloading the dataset, extract the compressed files. You have to modify the ``hp.data_path`` and some other parameters in ``hparams.py``. Default parameters are for the LibriTTS dataset.
 
