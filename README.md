@@ -36,16 +36,15 @@ After downloading the dataset, extract the compressed files. You have to modify 
 
 ## Preprocessing :pencil2:
 Preprocessing contains 3 stages:
-1. Preparing Alignment Data 
-2. Montreal Force Alignmnet
-3. Creating Training Dataset
+1. **Preparing Alignment Data**
+2. **Montreal Force Alignmnet (MFA)**
+3. **Creating Training Dataset**
 
-For Montreal Force Alignment
-```
-wget https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/releases/download/v1.1.0-beta.2/montreal-forced-aligner_linux.tar.gz
-tar -zxvf montreal-forced-aligner_linux.tar.gz
-```
-After downloading MFA, you should specify the path to MFA in ``hparams.py``.
+For **2. Montreal Force Alignmnet (MFA)**, please refer to [Montreal-Forced-Aligner](https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/releases).
+
+Download and extract the tar.gz file, then specify the path to MFA in ``hparams.py``
+
+Then run:
 
 ```
 python preprocess.py --prepare_align --mfa --create_dataset
@@ -60,6 +59,7 @@ Train your model with
 python train.py
 ```
 The training output, including log message, checkpoint, and synthesized audios will be put in ``./log``
+
 ## References :notebook_with_decorative_cover:
 - [FastSpeech 2: Fast and High-Quality End-to-End Text to Speech](https://arxiv.org/abs/2006.04558), Y. Ren, *et al*.
 - [FastSpeech: Fast, Robust and Controllable Text to Speech](https://arxiv.org/abs/1905.09263), Y. Ren, *et al*.
