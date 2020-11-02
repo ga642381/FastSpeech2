@@ -18,17 +18,19 @@
 * This project is based on [ming024's implementation](https://github.com/ming024/FastSpeech2). Any suggestion for improvement is appreciated.
 
 ## Datasets
-This project supports 4 datasets, including muti-speaker datasets and single-speaker datasets:
+This project now supports 4 datasets, including muti-speaker datasets and single-speaker datasets:
 
 ### Multi speaker
-* VCTK
-* LibriTTS
+:fire: VCTK
+
+:fire: LibriTTS
 
 ### Single speaker
-* LJSpeech
-* Blizzard2013
+:fire: LJSpeech
 
-After downloading the dataset, extract the compressed files, you have to modify the ``hp.data_path`` and some other parameters in ``hparams.py``. Default parameters are for the LibriTTS dataset.
+:fire: Blizzard2013
+
+After downloading the dataset, extract the compressed files. You have to modify the ``hp.data_path`` and some other parameters in ``hparams.py``. Default parameters are for the LibriTTS dataset.
 
 ## Preprocessing
 Preprocessing contains 3 stages:
@@ -41,7 +43,7 @@ For Montreal Force Alignment
 wget https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/releases/download/v1.1.0-beta.2/montreal-forced-aligner_linux.tar.gz
 tar -zxvf montreal-forced-aligner_linux.tar.gz
 ```
-After downloading MFA, you should specify the path to MA in ``hparams.py``.
+After downloading MFA, you should specify the path to MFA in ``hparams.py``.
 
 ```
 python preprocess.py --prepare_align --mfa --create_dataset
@@ -53,7 +55,7 @@ After preprocessing, you will get a ``stat.txt`` file in your ``hp.preprocessed_
 
 Train your model with
 ```
-python3 train.py
+python train.py
 ```
 The training output, including log message, checkpoint, and synthesized audios will be put in ``./log``
 # References
