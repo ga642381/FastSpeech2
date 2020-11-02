@@ -21,7 +21,7 @@
 
 <p align="center">
     <br>
-    <img src="https://raw.githubusercontent.com/ga642381/ga642381.github.io/main/assets/FastSpeech2.png" width="800"/>
+    <img src="https://raw.githubusercontent.com/ga642381/ga642381.github.io/main/assets/FastSpeech2.png" width="700"/>
     <br>
 </p>
 
