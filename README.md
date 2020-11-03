@@ -40,7 +40,7 @@ This project supports 4 datasets, including muti-speaker datasets and single-spe
 
 After downloading the dataset, extract the compressed files. You have to modify the ``hp.data_path`` and some other parameters in ``hparams.py``. Default parameters are for the LibriTTS dataset.
 
-## Quick Start :fist::
+## Quick Start :fist:
 1. Download the [pretrained model](https://drive.google.com/file/d/1DLzUiUPXzEXIuHB1B4JeSWv3sbm96GMR/view).
 2. Put ``checkpoint_600000.pth.tar`` in ./states/ckpt.
 3. Run
