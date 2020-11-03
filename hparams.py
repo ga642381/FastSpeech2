@@ -73,11 +73,11 @@ spk_embed_weight_std = 0.01
 
 ### Checkpoints and synthesis path ###
 preprocessed_path = os.path.join("./preprocessed/", dataset)
-checkpoint_path   = os.path.join("./log/ckpt/", dataset)
-synth_path        = os.path.join("./log/synth/", dataset)
-eval_path         = os.path.join("./log/eval/", dataset)
-log_path          = os.path.join("./log/log", dataset)
-test_path         = os.path.join("./log/results/")
+checkpoint_path   = os.path.join("./states/ckpt/", dataset)
+synth_path        = os.path.join("./states/synth/", dataset)
+eval_path         = os.path.join("./states/eval/", dataset)
+log_path          = os.path.join("./states/log", dataset)
+test_path         = os.path.join("./states/results/")
 
 
 ### Optimizer ###

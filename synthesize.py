@@ -4,6 +4,7 @@ import numpy as np
 import os
 import argparse
 import re
+import random
 from string import punctuation
 from g2p_en import G2p
 
@@ -36,9 +37,10 @@ def preprocess(text):
     phone = '{'+ '}{'.join(phone) + '}'
     phone = re.sub(r'\{[^\w\s]?\}', '{sp}', phone)
     phone = phone.replace('}{', ' ')
-    
+    print(text)
     print('|' + phone + '|')
-    print(text_to_sequence(phone, hp.text_cleaners))
+    print("\n")
+    #print(text_to_sequence(phone, hp.text_cleaners))
     sequence = np.array(text_to_sequence(phone, hp.text_cleaners))
     sequence = np.stack([sequence])
 
@@ -46,8 +48,10 @@ def preprocess(text):
 
 def get_FastSpeech2(num):
     checkpoint_path = os.path.join(hp.checkpoint_path, "checkpoint_{}.pth.tar".format(num))
+    n_spkers = torch.load(checkpoint_path)['model']['module.embed_speakers.weight'].shape[0]
+    
     if hp.use_spk_embed:    
-        model = nn.DataParallel(FastSpeech2(True, hp.n_spkers))
+        model = nn.DataParallel(FastSpeech2(True, n_spkers))
     else:
         model = nn.DataParallel(FastSpeech2())
         
@@ -66,8 +70,10 @@ def synthesize(model, waveglow, melgan, text, sentence, prefix=''):
     
     # generate wav
     if hp.use_spk_embed:
-        hp.batch_size = 1
-        spk_ids = torch.tensor(list(inv_spk_table.keys())[9:hp.batch_size+9]).to(torch.int64).to(device)
+        hp.batch_size = 3
+        # select speakers
+        # TODO
+        spk_ids = torch.tensor(list(inv_spk_table.keys())[5:5+hp.batch_size]).to(torch.int64).to(device)
         text = text.repeat(hp.batch_size, 1)
         src_len = src_len.repeat(hp.batch_size)
         mel, mel_postnet, log_duration_output, f0_output, energy_output, _, _, mel_len = model(text, src_len, speaker_ids=spk_ids)
@@ -125,53 +131,32 @@ def synthesize(model, waveglow, melgan, text, sentence, prefix=''):
 if __name__ == "__main__":
     # Test
     parser = argparse.ArgumentParser()
-    parser.add_argument('--step', type=int, default=200000)
+    parser.add_argument('--step', type=int, default=600000)
+    parser.add_argument('--input', action="store_true", default=False)
     args = parser.parse_args()
-    """
-    sentences = [
-        "Advanced text to speech models such as Fast Speech can synthesize speech significantly faster than previous auto regressive models with comparable quality. The training of Fast Speech model relies on an auto regressive teacher model for duration prediction and knowledge distillation, which can ease the one to many mapping problem in T T S. However, Fast Speech has several disadvantages, 1, the teacher student distillation pipeline is complicated, 2, the duration extracted from the teacher model is not accurate enough, and the target mel spectrograms distilled from teacher model suffer from information loss due to data simplification, both of which limit the voice quality.",
-        "Printing, in the only sense with which we are at present concerned, differs from most if not from all the arts and crafts represented in the Exhibition",
-        "in being comparatively modern.",
-        "For although the Chinese took impressions from wood blocks engraved in relief for centuries before the woodcutters of the Netherlands, by a similar process",
-        "produced the block books, which were the immediate predecessors of the true printed book,",
-        "the invention of movable metal letters in the middle of the fifteenth century may justly be considered as the invention of the art of printing.",
-        "And it is worth mention in passing that, as an example of fine typography,",
-        "the earliest book printed with movable types, the Gutenberg, or \"forty-two line Bible\" of about 1455,",
-        "has never been surpassed.",
-        "Printing, then, for our purpose, may be considered as the art of making books by means of movable types.",
-        "Now, as all books not primarily intended as picture-books consist principally of types composed to form letterpress,"
-        ]
     
-    sentences = [
-        "Big brother is always right.",
-        "In the mammalian nervous system, billions of neurons connected by quadrillions of synapses exchange electrical, chemical and mechanical signals."
-        ]
-    """
-    sentences = [
-        """Encouraged by the success of deep neural networks on a variety of visual tasks,
-much theoretical and experimental work has been aimed at understanding and interpreting how vision networks operate. Meanwhile, deep neural networks have
-also achieved impressive performance in audio processing applications, both as
-sub-components of larger systems and as complete end-to-end systems by themselves. Despite their empirical successes, comparatively little is understood about
-how these audio models accomplish these tasks. In this work, we employ a recently developed statistical mechanical theory that connects geometric properties
-of network representations and the separability of classes to probe how information is untangled within neural networks trained to recognize speech. We observe
-that speaker-specific nuisance variations are discarded by the network’s hierarchy,
-whereas task-relevant properties such as words and phonemes are untangled in
-later layers. Higher level concepts such as parts-of-speech and context dependence also emerge in the later layers of the network. Finally, we find that the deep
-representations carry out significant temporal untangling by efficiently extracting
-task-relevant features at each time step of the computation. Taken together, these
-findings shed light on how deep auditory models process time dependent input
-signals to achieve invariant speech recognition, and show how different concepts
-emerge through the layers of the network."""
-]
+    if args.input:
+        sentence = input("Please enter an English sentence : ")
+        sentences = [sentence]
+        
+    else:
+        sentences = ["Weather forecast for tonight: dark.",
+                     "I put a dollar in a change machine. Nothing changed.",
+                     "“No comment” is a comment.",
+                     "So far, this is the oldest I’ve been.",
+                     "I am in shape. Round is a shape."
+                ]
+        
     model = get_FastSpeech2(args.step).to(device)
     melgan = waveglow = None
     if hp.vocoder == 'melgan':
         melgan = utils.get_melgan()
-        #melgan.to(device)
+        
     elif hp.vocoder == 'waveglow':
         waveglow = utils.get_waveglow()
         waveglow.to(device)
-    
+        
+    print("Synthesizing...")
     for sentence in sentences:
         text = preprocess(sentence)
         synthesize(model, waveglow, melgan, text, sentence, prefix='step_{}'.format(args.step))
