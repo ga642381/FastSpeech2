@@ -37,6 +37,21 @@ class SpeakerIntegrator(nn.Module):
             
         return x
         
+class EmotionIntegrator(nn.Module):
+    """ Emotion Integrator """
+    def __init__(self):
+        super(EmotionIntegrator, self).__init__()
+    
+    def forward(self, x, emembs):
+        '''
+        x shape : (batch, 39, 256)
+        emembs shape : (batch, 256)
+        '''
+        emembs = emembs.unsqueeze(1)
+        emembs = emembs.repeat(1,x.shape[1] ,1)
+        x = x + emembs
+            
+        return x
 
 class VarianceAdaptor(nn.Module):
     """ Variance Adaptor """
