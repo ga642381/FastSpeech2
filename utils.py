@@ -124,6 +124,23 @@ def get_mask_from_lengths(lengths, max_len=None):
 
     return mask
 
+
+
+
+
+
+def get_melgan():
+    melgan = torch.hub.load('descriptinc/melgan-neurips', 'load_melgan')
+    return melgan
+
+def melgan_infer(mel, melgan, path):
+    wav = melgan.inverse(mel).squeeze(0).detach().cpu().numpy()
+    soundfile.write(path, wav, hp.sampling_rate)
+    
+def melgan_infer_batch(mel, melgan):
+    return melgan.inverse(mel).cpu().numpy()
+
+
 def get_waveglow():
     waveglow = torch.hub.load('nvidia/DeepLearningExamples:torchhub', 'nvidia_waveglow')
     waveglow = waveglow.remove_weightnorm(waveglow)
@@ -131,44 +148,20 @@ def get_waveglow():
     for m in waveglow.modules():
         if 'Conv' in str(type(m)):
             setattr(m, 'padding_mode', 'zeros')
-
     return waveglow
 
 def waveglow_infer(mel, waveglow, path):
     with torch.no_grad():
-        wav = waveglow.infer(mel, sigma=1.0) * hp.max_wav_value
-        wav = wav.squeeze().cpu().numpy()
-    wav = wav.astype('int16')
-    wavfile.write(path, hp.sampling_rate, wav)
-
-
-
-if hp.dataset == "VCTK" or hp.dataset == "LibriTTS":
-    def get_melgan():
-        melgan = torch.hub.load('descriptinc/melgan-neurips', 'load_melgan')
-        return melgan
+        wav = waveglow.infer(mel,)
+        wav = wav.cpu().numpy()
+    soundfile.write(path, hp.sampling_rate, wav)
     
-    def melgan_infer(mel, melgan, path):
-        wav = melgan.inverse(mel).squeeze(0).detach().cpu().numpy()
-        soundfile.write(path, wav, hp.sampling_rate)
-        
-    def melgan_infer_batch(mel, melgan):
-        return melgan.inverse(mel).cpu().numpy()
-    
-else:
-    def get_melgan():
-        melgan = torch.hub.load('seungwonpark/melgan', 'melgan')
-        melgan.eval()
-        return melgan
-    
-    def melgan_infer(mel, melgan, path):
-        with torch.no_grad():
-            wav = melgan.inference(mel).cpu().numpy()
-        wav = wav.astype('int16')
-        wavfile.write(path, hp.sampling_rate, wav)
-        
+def waveglow_infer_batch(mel, waveglow):
+    with torch.no_grad():
+        wav = waveglow.infer(mel)
+        wav = wav.cpu().numpy()
+    return wav
 
-    
 def pad_1D(inputs, PAD=0):
 
     def pad_data(x, length, PAD):
