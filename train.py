@@ -40,8 +40,8 @@ def main(args):
     
     # Define model
     if hp.use_spk_embed:
-        n_pkers = len(dataset.spk_table.keys())
-        model = nn.DataParallel(FastSpeech2(n_spkers=n_pkers)).to(device)
+        n_spkers = len(dataset.spk_table.keys())
+        model = nn.DataParallel(FastSpeech2(n_spkers=n_spkers)).to(device)
     else:
         model = nn.DataParallel(FastSpeech2()).to(device)
         
@@ -83,7 +83,7 @@ def main(args):
         os.makedirs(os.path.join(log_path, 'train'))
         os.makedirs(os.path.join(log_path, 'validation'))
     train_logger = SummaryWriter(os.path.join(log_path, 'train'))
-    val_logger = SummaryWriter(os.path.join(log_path, 'validation'))
+    val_logger   = SummaryWriter(os.path.join(log_path, 'validation'))
 
     # Init synthesis directory
     synth_path = hp.synth_path
@@ -136,7 +136,7 @@ def main(args):
                 ### Cal Loss ###
                 mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss = Loss(
                         log_duration_output, log_D, f0_output, f0, energy_output, energy, mel_output, mel_postnet_output, mel_target, ~src_mask, ~mel_mask)
-                total_loss = mel_loss + mel_postnet_loss + d_loss + 0.01*f_loss + 0.1*e_loss
+                total_loss = mel_loss + mel_postnet_loss + d_loss + f_loss + e_loss
 
                 t_l = total_loss.item()
                 m_l = mel_loss.item()

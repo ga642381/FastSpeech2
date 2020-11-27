@@ -54,13 +54,13 @@ mel_fmax = None
 # Audio and mel
 sampling_rate = dataset_config[dataset]['sampling_rate']
 filter_length = dataset_config[dataset]['filter_length']
-hop_length = dataset_config[dataset]['hop_length']
-win_length = dataset_config[dataset]['win_length']
+hop_length    = dataset_config[dataset]['hop_length']
+win_length    = dataset_config[dataset]['win_length']
 
 
 # Quantization for F0 and energy
-f0_min = dataset_config[dataset]['f0_min']
-f0_max = dataset_config[dataset]['f0_max']
+f0_min     = dataset_config[dataset]['f0_min']
+f0_max     = dataset_config[dataset]['f0_max']
 energy_min = dataset_config[dataset]['energy_min']
 energy_max = dataset_config[dataset]['energy_max']
 n_bins = 256

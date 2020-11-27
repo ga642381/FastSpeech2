@@ -18,10 +18,10 @@ class FastSpeech2Loss(nn.Module):
         
         log_d_predicted = log_d_predicted.masked_select(src_mask)
         log_d_target = log_d_target.masked_select(src_mask)
-        p_predicted = p_predicted.masked_select(mel_mask)
-        p_target = p_target.masked_select(mel_mask)
-        e_predicted = e_predicted.masked_select(mel_mask)
-        e_target = e_target.masked_select(mel_mask)
+        p_predicted = p_predicted.masked_select(src_mask)
+        p_target = p_target.masked_select(src_mask)
+        e_predicted = e_predicted.masked_select(src_mask)
+        e_target = e_target.masked_select(src_mask)
 
         mel = mel.masked_select(mel_mask.unsqueeze(-1))
         mel_postnet = mel_postnet.masked_select(mel_mask.unsqueeze(-1))
@@ -34,4 +34,4 @@ class FastSpeech2Loss(nn.Module):
         p_loss = self.mae_loss(p_predicted, p_target)
         e_loss = self.mae_loss(e_predicted, e_target)
         
-        return mel_loss, mel_postnet_loss, d_loss, p_loss, e_loss
+        return mel_loss, mel_postnet_loss, d_loss, torch.log(p_loss), torch.log(e_loss)

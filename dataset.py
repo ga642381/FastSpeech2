@@ -9,6 +9,22 @@ import hparams as hp
 from utils import pad_1D, pad_2D
 from text import text_to_sequence, sequence_to_text
 
+def average_to_phone_level(mel_level_attribute, phones_len):
+    result = np.zeros(phones_len.shape)
+    
+    for i, _ in enumerate(phones_len):
+        start = 0
+        for j, d in enumerate(phones_len[i]):
+            # calculate average value, if phone len is 0, then average is 0
+            if start == start + d:
+                average = 0
+            else:
+                average = np.mean(mel_level_attribute[i][start: start+d])
+                
+            result[i][j] = average
+            start += d
+    return result
+
 class Dataset(Dataset):
     def __init__(self, filename="train.txt", sort=True):
         self.basename, self.text = self.process_meta(os.path.join(hp.preprocessed_path, filename))
@@ -51,21 +67,27 @@ class Dataset(Dataset):
         return sample
     
     def collate_fn(self, batch):
-        len_arr = np.array([d["text"].shape[0] for d in batch])
-        index_arr = np.argsort(-len_arr)
+        # batchsize      : 256 samples
+        # real_batchsize : 16  samples
+        # cut_list       : 16 x 16
+        # output         : 16 batches (256 samples)
         batchsize = len(batch)
         real_batchsize = int(math.sqrt(batchsize))
+        
+        len_arr = np.array([b["text"].shape[0] for b in batch]) # lens of 256 samples
+        iex_arr = np.argsort(-len_arr)                        # [(i_max_len) ... (i_min_len)]
 
-        cut_list = list()
+        # index of samples sorted by lens
+        cut_lists = list()
         for i in range(real_batchsize):
             if self.sort:
-                cut_list.append(index_arr[i*real_batchsize:(i+1)*real_batchsize])
+                cut_lists.append(iex_arr[i * real_batchsize: (i+1) * real_batchsize])
             else:
-                cut_list.append(np.arange(i*real_batchsize, (i+1)*real_batchsize))
+                cut_lists.append(np.arange(i * real_batchsize, (i+1) * real_batchsize))
         
         output = list()
         for i in range(real_batchsize):
-            output.append(self.reprocess(batch, cut_list[i]))
+            output.append(self.reprocess(batch, cut_lists[i]))
         
         # shuffle batch of batchs to solve the problem that
         # during synth, it always synthesizes short(long) sentences
@@ -75,18 +97,20 @@ class Dataset(Dataset):
         return output    
 
     def reprocess(self, batch, cut_list):
-        ids = [batch[ind]["id"] for ind in cut_list]
+        # batch    : 256 samples
+        # cut_list : 16 iices
+        ids = [batch[i]["id"] for i in cut_list]
         if hp.use_spk_embed:
             if hp.dataset == "VCTK" or hp.dataset=="LibriTTS":
                 spk_ids = [self.spk_table[_id.split("_")[0]] for _id in ids]
             else:
                 raise NotImplementedError("Looking up datset {} speaker table not implemented".format(hp.dataset))
                 
-        texts       = [batch[ind]["text"] for ind in cut_list]
-        mel_targets = [batch[ind]["mel_target"] for ind in cut_list]
-        Ds          = [batch[ind]["D"] for ind in cut_list]
-        f0s         = [batch[ind]["f0"] for ind in cut_list]
-        energies    = [batch[ind]["energy"] for ind in cut_list]
+        texts       = [batch[i]["text"]       for i in cut_list]
+        mel_targets = [batch[i]["mel_target"] for i in cut_list]
+        Ds          = [batch[i]["D"]          for i in cut_list]
+        f0s         = [batch[i]["f0"]         for i in cut_list]
+        energies    = [batch[i]["energy"]     for i in cut_list]
         
         for text, D, id_ in zip(texts, Ds, ids):
             if len(text) != len(D):
@@ -100,22 +124,27 @@ class Dataset(Dataset):
         for mel in mel_targets:
             length_mel = np.append(length_mel, mel.shape[0])
         
-        texts = pad_1D(texts)
-        Ds = pad_1D(Ds)
+        texts       = pad_1D(texts)
+        Ds          = pad_1D(Ds)
         mel_targets = pad_2D(mel_targets)
-        f0s = pad_1D(f0s)
-        energies = pad_1D(energies)
-        log_Ds = np.log(Ds + hp.log_offset)
+        f0s         = pad_1D(f0s)
+        energies    = pad_1D(energies)
+        log_Ds      = np.log(Ds + hp.log_offset)
         
-        out = {"id": ids,
-               "text": texts,
+        # pitch and energy from mel level to phone level 2020.11.26 kaiwei
+        f0s      = average_to_phone_level(f0s, Ds)
+        energies = average_to_phone_level(energies, Ds)
+        #
+        
+        out = {"id"        : ids,
+               "text"      : texts,
                "mel_target": mel_targets,
-               "D": Ds,
-               "log_D": log_Ds,
-               "f0": f0s,
-               "energy": energies,
-               "src_len": length_text,
-               "mel_len": length_mel}
+               "D"         : Ds,
+               "log_D"     : log_Ds,
+               "f0"        : f0s,
+               "energy"    : energies,
+               "src_len"   : length_text,
+               "mel_len"   : length_mel}
         if hp.use_spk_embed:
             out.update({"spk_ids": spk_ids})
     

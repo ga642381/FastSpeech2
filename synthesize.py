@@ -131,7 +131,7 @@ def synthesize(model, waveglow, melgan, text, sentence, prefix=''):
 if __name__ == "__main__":
     # Test
     parser = argparse.ArgumentParser()
-    parser.add_argument('--step', type=int, default=600000)
+    parser.add_argument('--step', type=int, default=160000)
     parser.add_argument('--input', action="store_true", default=False)
     args = parser.parse_args()
     
