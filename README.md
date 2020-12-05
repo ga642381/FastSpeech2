@@ -1,8 +1,3 @@
-<p align="center">
-    <br>
-    <img src="https://raw.githubusercontent.com/ga642381/ga642381.github.io/main/assets/KW_Speech_logo.png" width="250"/>
-    <br>
-</p>
 <p>
   <h3 align="center">
   Multi-Speaker FastSpeech 2 - PyTorch
