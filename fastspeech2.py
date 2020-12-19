@@ -30,7 +30,8 @@ class FastSpeech2(nn.Module):
             self.speaker_integrator = SpeakerIntegrator()
         self.variance_adaptor = VarianceAdaptor()
         self.decoder = Decoder()
-        self.mel_linear = nn.Linear(hp.decoder_hidden, hp.n_mel_channels)
+        
+        self.to_mel = nn.Linear(hp.decoder_hidden, hp.n_mel_channels)
         self.use_postnet = use_postnet
         if self.use_postnet:
             self.postnet = PostNet()
@@ -39,12 +40,14 @@ class FastSpeech2(nn.Module):
         src_mask = get_mask_from_lengths(src_len, max_src_len)
         mel_mask = get_mask_from_lengths(mel_len, max_mel_len) if mel_len is not None else None
         
+        # === Encoder === #
         encoder_output = self.encoder(src_seq, src_mask)
         
         if self.use_spk_embed and speaker_ids is not None:
             spk_embed = self.embed_speakers(speaker_ids)
             encoder_output = self.speaker_integrator(encoder_output, spk_embed)
         
+        # === Variance Adaptor === #
         if d_target is not None:
             variance_adaptor_output, d_prediction, p_prediction, e_prediction, _, _ = self.variance_adaptor(
                 encoder_output, src_mask, mel_mask, d_target, p_target, e_target, max_mel_len)
@@ -54,10 +57,14 @@ class FastSpeech2(nn.Module):
         
         if self.use_spk_embed and speaker_ids is not None:
             variance_adaptor_output = self.speaker_integrator(variance_adaptor_output, spk_embed)
-            
-        decoder_output = self.decoder(variance_adaptor_output, mel_mask)
-        mel_output = self.mel_linear(decoder_output)
         
+        # === Decoder === #
+        decoder_output = self.decoder(variance_adaptor_output, mel_mask)
+        
+        # === 
+        mel_output = self.to_mel(decoder_output)
+        
+        # residual
         if self.use_postnet:
             mel_output_postnet = self.postnet(mel_output) + mel_output
         else:

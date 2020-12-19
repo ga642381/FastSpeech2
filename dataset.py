@@ -32,10 +32,10 @@ class Dataset(Dataset):
         
         if hp.dataset == "VCTK":
             from data import vctk
-            self.spk_table, self.inv_spk_table = vctk.get_spk_table()
+            self.speaker_table, self.inv_speaker_table = vctk.get_spk_table()
         if hp.dataset == "LibriTTS":
             from data import libritts
-            self.spk_table, self.inv_spk_table = libritts.get_spk_table()
+            self.speaker_table, self.inv_speaker_table = libritts.get_spk_table()
             
             
     def __len__(self):

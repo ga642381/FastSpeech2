@@ -41,6 +41,7 @@ variance_predictor_kernel_size = 3
 variance_predictor_dropout = 0.5
 
 max_seq_len = 1000
+min_seq_len = 20
 
 ### dataset ###
 with open('./data/dataset.yaml', 'r') as f:
@@ -56,6 +57,9 @@ sampling_rate = dataset_config[dataset]['sampling_rate']
 filter_length = dataset_config[dataset]['filter_length']
 hop_length    = dataset_config[dataset]['hop_length']
 win_length    = dataset_config[dataset]['win_length']
+
+min_level_db = -100 
+fmin = 40 #why
 
 
 # Quantization for F0 and energy

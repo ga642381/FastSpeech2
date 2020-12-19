@@ -95,9 +95,6 @@ def evaluate(model, step, vocoder=None):
                         if hp.vocoder == 'melgan':
                             vocoder.melgan_infer(mel_target_torch, vocoder, os.path.join(hp.eval_path, 'ground-truth_{}_{}.wav'.format(basename, hp.vocoder)))
                             vocoder.melgan_infer(mel_postnet_torch, vocoder, os.path.join(hp.eval_path, 'eval_{}_{}.wav'.format(basename, hp.vocoder)))
-                        elif hp.vocoder == 'waveglow':
-                            vocoder.waveglow_infer(mel_target_torch, vocoder, os.path.join(hp.eval_path, 'ground-truth_{}_{}.wav'.format(basename, hp.vocoder)))
-                            vocoder.waveglow_infer(mel_postnet_torch, vocoder, os.path.join(hp.eval_path, 'eval_{}_{}.wav'.format(basename, hp.vocoder)))
         
                         np.save(os.path.join(hp.eval_path, 'eval_{}_mel.npy'.format(basename)), mel_postnet.numpy())
                         
@@ -158,8 +155,6 @@ if __name__ == "__main__":
     # Load vocoder
     if hp.vocoder == 'melgan':
         vocoder = vocoder.get_melgan()
-    elif hp.vocoder == 'waveglow':
-        vocoder = vocoder.get_waveglow()
     vocoder.to(device)
         
     # Init directories

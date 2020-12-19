@@ -4,6 +4,8 @@ import tgt
 from tqdm import tqdm
 import pyworld as pw
 import torch
+
+from audio.dsp import melspectrogram
 import audio as Audio
 from utils import get_alignment
 from text import _clean_text
@@ -31,6 +33,10 @@ def get_spk_table():
 
 ### prepare align ###
 def prepare_align(in_dir):
+    """
+    * Use [filename].normalized.txt ot generate [filename].txt
+    * [filename].txt is what we want
+    """
     for dirpath, dirnames, filenames in os.walk(in_dir):
         for file in filenames:
             if file.endswith(".normalized.txt"):
@@ -71,7 +77,7 @@ def build_from_path(in_dir, out_dir):
 
         random.shuffle(file_paths)
         for i, file_path in enumerate(file_paths):
-            subdir = file_path[0]
+            subdir   = file_path[0]
             filename = file_path[1]
             basename = filename.replace(".normalized.txt", "")
             
@@ -108,35 +114,56 @@ def build_from_path(in_dir, out_dir):
     return [r for r in train if r is not None], [r for r in val if r is not None]
 
 def process_utterance(in_dir, out_dir, dirname, basename):
-    wav_path = os.path.join(in_dir , dirname   , '{}.wav'.format(basename))
-    tg_path  = os.path.join(out_dir, 'TextGrid', dirname, '{}.TextGrid'.format(basename))
+    """
+    * The most important function in preprocessing.
+    
+    * You can set some constrains by returning None.
+    """
+
+    wav_path = os.path.join(in_dir , dirname   , f'{basename}.wav')
+    tg_path  = os.path.join(out_dir, 'TextGrid', dirname, f'{basename}.TextGrid')
 
     if not os.path.exists(tg_path):
         return None
         
     # Get alignments
     textgrid = tgt.io.read_textgrid(tg_path)
-    phone, duration, start, end = get_alignment(textgrid.get_tier_by_name('phones'))
+    phone, duration, trim_start, trim_end = get_alignment(textgrid.get_tier_by_name('phones'))
     text = '{'+ '}{'.join(phone) + '}' # '{A}{B}{$}{C}', $ represents silent phones
     text = text.replace('{$}', ' ')    # '{A}{B} {C}'
     text = text.replace('}{', ' ')     # '{A B} {C}'
     
-    if start >= end:
+    if trim_start >= trim_end:
         return None
     
-    # Read and trim wav files
-    wav, _ = librosa.load(wav_path, sr=hp.sampling_rate)
-    wav = wav[int(hp.sampling_rate*start):int(hp.sampling_rate*end)].astype(np.float32)
+    # ================== Audio ==================== #
+    total_length  = sum(duration)
+    sampling_rate = hp.sampling_rate
+    hop_length    = hp.hop_length    
     
-    # Compute fundamental frequency
-    f0, _ = pw.dio(wav.astype(np.float64), hp.sampling_rate, frame_period=hp.hop_length/hp.sampling_rate*1000)
-    f0 = f0[:sum(duration)]
+    # === Wav === #
+    wav, _ = librosa.load(wav_path, sr=sampling_rate)
+    wav = wav[int(sampling_rate*trim_start):int(sampling_rate*trim_end)].astype(np.float32)
     
-    # Compute mel-scale spectrogram and energy
-    mel_spectrogram, energy = Audio.tools.get_mel_from_wav(torch.FloatTensor(wav))
-    mel_spectrogram = mel_spectrogram.cpu().numpy().astype(np.float32)[:, :sum(duration)]
-    energy = energy.cpu().numpy().astype(np.float32)[:sum(duration)]
+    # === f0 === #
+    _f0, t = pw.dio(wav.astype(np.float64), sampling_rate, frame_period=hop_length/sampling_rate*1000)
+    f0     = pw.stonemask(wav, _f0, t, sampling_rate)
+    
+    # === Mel === #
+    #mel_spectrogram, energy = Audio.tools.get_mel_from_wav(torch.FloatTensor(wav))
+    #mel_spectrogram = mel_spectrogram.cpu().numpy().astype(np.float32)[ : , :total_length]
+    #energy = energy.cpu().numpy().astype(np.float32)[ :total_length]
+    
+    mel_spectrogram, energy = melspectrogram(wav, return_energy=True)
+    
+    mel_spectrogram = mel_spectrogram[:total_length]
+    f0 = f0[:total_length]
+    energy = energy[:total_length]
+    
     if mel_spectrogram.shape[1] >= hp.max_seq_len:
+        return None
+    
+    if mel_spectrogram.shape[1] <= hp.min_seq_len:
         return None
     
     # if the shape is not right, you can check get_alignment function

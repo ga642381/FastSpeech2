@@ -14,23 +14,6 @@ import hparams as hp
 import soundfile
 
 ## Vocoders ##
-def get_waveglow():
-    waveglow = torch.hub.load('nvidia/DeepLearningExamples:torchhub', 'nvidia_waveglow')
-    waveglow = waveglow.remove_weightnorm(waveglow)
-    waveglow.eval()
-    for m in waveglow.modules():
-        if 'Conv' in str(type(m)):
-            setattr(m, 'padding_mode', 'zeros')
-
-    return waveglow
-
-def waveglow_infer(mel, waveglow, path):
-    with torch.no_grad():
-        wav = waveglow.infer(mel, sigma=1.0) * hp.max_wav_value
-        wav = wav.squeeze().cpu().numpy()
-    soundfile.write(path, wav, hp.sampling_rate)
-    
-
 def get_melgan():
     melgan = torch.hub.load('descriptinc/melgan-neurips', 'load_melgan')
     return melgan

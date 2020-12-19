@@ -7,6 +7,7 @@ import numpy as np
 import argparse
 import os
 import time
+from os.path import join as pj
 
 from fastspeech2 import FastSpeech2
 from loss import FastSpeech2Loss
@@ -18,15 +19,57 @@ import utils
 import vocoder
 
 class Trainer():
-    def __init__(self):
+    def __init__(self, args):
+        # === Init === #
+        self.args = args
         torch.manual_seed(0)
         self.device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
         
+        self.loader, self.n_spkers, self.speaker_table, self.inv_speaker_table = self.init_dataset("train")
         
-    def init_dataset(self):
-        dataset = Dataset("train.txt")
+        self.model  = self.init_model(n_spkers=self.n_spkers).to(self.device)
+        
+        self.optimizer, self.scheduled_optim = self.init_optimizer()
+        
+        self.loss = FastSpeech2Loss().to(self.device) 
+        
+        # === Load Model === #
+        self.load_model_possible(hp.checkpoint_path, self.args.restore_step)
+        
+    def init_dataset(self, split):
+        dataset = Dataset(f"{split}.txt")
         loader = DataLoader(dataset, batch_size=hp.batch_size**2, shuffle=True, 
                             collate_fn=dataset.collate_fn, drop_last=True, num_workers=0)
+        if hasattr(dataset, "speaker_table"):
+            n_spkers = len(dataset.spk_table.keys())
+            speaker_table     = dataset.speaker_table
+            inv_speaker_table = dataset.inb_speaker_table
+        else:
+            n_spkers = 0
+            speaker_table     = None
+            inv_speaker_table = None
+        return loader, n_spkers, speaker_table, inv_speaker_table
+    
+    def init_model(self, n_spkers):
+        model = nn.DataParallel(FastSpeech2(n_spkers=n_spkers))
+        return model
+            
+    def init_optimizer(self):
+        optimizer = torch.optim.Adam(self.model.parameters(), betas=hp.betas, eps=hp.eps, weight_decay = hp.weight_decay)
+        scheduled_optim = ScheduledOptim(optimizer, hp.decoder_hidden, hp.n_warm_up_step, self.args.restore_step)
+        return optimizer, scheduled_optim
+    
+    def load_model_possible(self, checkpoint_path, restore_step):
+        try:
+            checkpoint = torch.load(pj(checkpoint_path, f'checkpoint_{restore_step}.pth.tar'))
+            self.model.load_state_dict(checkpoint['model'])
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
+            print("\n---Model Restored at Step {}---\n".format(restore_step))
+            
+        except:
+            print("\n---Start New Training---\n")
+            if not os.path.exists(checkpoint_path):
+                os.makedirs(checkpoint_path)
         
 def main(args):
     torch.manual_seed(0)
@@ -71,10 +114,6 @@ def main(args):
     # Load vocoder
     if hp.vocoder == 'melgan':
         melgan = utils.get_melgan()
-        #melgan.to(device)
-    elif hp.vocoder == 'waveglow':
-        waveglow = utils.get_waveglow()
-        waveglow.to(device)
 
     # Init logger
     log_path = hp.log_path
@@ -219,10 +258,6 @@ def main(args):
                         vocoder.melgan_infer(mel_postnet_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_postnet_{}.wav'.format(current_step, spk_id, hp.vocoder)))
                         vocoder.melgan_infer(mel_target_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_ground-truth_{}.wav'.format(current_step, spk_id, hp.vocoder)))
                     
-                    elif hp.vocoder == 'waveglow':
-                        vocoder.waveglow_infer(mel_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_{}.wav'.format(current_step, hp.vocoder)))
-                        vocoder.waveglow_infer(mel_postnet_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_postnet_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                        vocoder.waveglow_infer(mel_target_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_ground-truth_{}.wav'.format(current_step, spk_id, hp.vocoder)))
                     
                     f0 = f0[0, :length].detach().cpu().numpy()
                     energy = energy[0, :length].detach().cpu().numpy()

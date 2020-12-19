@@ -49,7 +49,7 @@ class Preprocessor():
         print(f"* Output path : {self.out_dir}")
         print("\n")
         print("The following will be executed:")
-        #print("\n")
+        
         if self.args.prepare_align:
             print("\t* Preparing Alignment Data")
         if self.args.mfa:
@@ -104,7 +104,7 @@ class Preprocessor():
         out_dir = self.out_dir
         mfa_path = self.mfa_path
         
-        mfa_out_dir = os.path.join(out_dir, "TextGrid")
+        mfa_out_dir  = os.path.join(out_dir, "TextGrid")
         mfa_bin_path = os.path.join(mfa_path, "bin", "mfa_align")
         mfa_pretrain_path = os.path.join(mfa_path, "pretrained_models", "librispeech-lexicon.txt")
         cmd = f"{mfa_bin_path} {in_dir} {mfa_pretrain_path} english {mfa_out_dir} -j 8"

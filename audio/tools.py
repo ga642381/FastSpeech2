@@ -42,6 +42,10 @@ def get_mel(filename):
 
     return melspec, energy
 
+
+
+
+# === #
 if hparams.dataset == "VCTK" or hparams.dataset == "LibriTTS":
     def get_mel_from_wav(audio):
         audio = audio.unsqueeze(0)
