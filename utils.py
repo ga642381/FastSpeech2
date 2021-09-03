@@ -1,3 +1,10 @@
+import soundfile
+import hparams as hp
+import text
+import librosa
+import os
+from scipy.io import wavfile
+from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,15 +12,9 @@ import numpy as np
 import matplotlib
 import matplotlib
 matplotlib.use("Agg")
-from matplotlib import pyplot as plt
-from scipy.io import wavfile
-import os
-import librosa
-import text
-import hparams as hp
-import soundfile
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 # Kaiwei 2020.10.06
 # necessary to keep the duration(int) close to the original one
@@ -23,11 +24,12 @@ def duration_warp(real_d, int_d):
     drop_order = np.argsort(-drop_diffs)
     for i in range(int(total_diff)):
         index = drop_order[i]
-        int_d[index] +=1
-        
-    return int_d 
+        int_d[index] += 1
 
-def get_alignment(tier):
+    return int_d
+
+
+def get_alignment(tier, sample_rate, hop_length):
     sil_phones = ['sil', 'sp', 'spn']
     phones = []
     durations_real = []
@@ -50,8 +52,8 @@ def get_alignment(tier):
             end_idx = len(phones)
         else:
             phones.append(p)
-        
-        d = e*hp.sampling_rate/hp.hop_length - s*hp.sampling_rate/hp.hop_length
+
+        d = e * sample_rate / hop_length - s * sample_rate / hop_length
         durations_real.append(d)
         durations_int.append(int(d))
 
@@ -60,8 +62,9 @@ def get_alignment(tier):
     durations_int = durations_int[:end_idx]
     phones = phones[:end_idx]
     durations = duration_warp(durations_real, durations_int)
-    
+
     return phones, durations, start_time, end_time
+
 
 def process_meta(meta_path):
     with open(meta_path, "r", encoding="utf-8") as f:
@@ -73,9 +76,11 @@ def process_meta(meta_path):
             text.append(t)
         return name, text
 
+
 def get_param_num(model):
     num_param = sum(param.numel() for param in model.parameters())
     return num_param
+
 
 def plot_data(data, titles=None, filename=None):
     fig, axes = plt.subplots(len(data), 1, squeeze=False)
@@ -93,56 +98,60 @@ def plot_data(data, titles=None, filename=None):
         axes[i][0].set_aspect(2.5, adjustable='box')
         axes[i][0].set_ylim(0, hp.n_mel_channels)
         axes[i][0].set_title(titles[i], fontsize='medium')
-        axes[i][0].tick_params(labelsize='x-small', left=False, labelleft=False) 
+        axes[i][0].tick_params(labelsize='x-small',
+                               left=False, labelleft=False)
         axes[i][0].set_anchor('W')
-        
+
         ax1 = add_axis(fig, axes[i][0])
         ax1.plot(pitch, color='tomato')
         ax1.set_xlim(0, spectrogram.shape[1])
         ax1.set_ylim(0, hp.f0_max)
         ax1.set_ylabel('F0', color='tomato')
-        ax1.tick_params(labelsize='x-small', colors='tomato', bottom=False, labelbottom=False)
-        
+        ax1.tick_params(labelsize='x-small', colors='tomato',
+                        bottom=False, labelbottom=False)
+
         ax2 = add_axis(fig, axes[i][0], 1.2)
         ax2.plot(energy, color='darkviolet')
         ax2.set_xlim(0, spectrogram.shape[1])
         ax2.set_ylim(hp.energy_min, hp.energy_max)
         ax2.set_ylabel('Energy', color='darkviolet')
         ax2.yaxis.set_label_position('right')
-        ax2.tick_params(labelsize='x-small', colors='darkviolet', bottom=False, labelbottom=False, left=False, labelleft=False, right=True, labelright=True)
-    
+        ax2.tick_params(labelsize='x-small', colors='darkviolet', bottom=False,
+                        labelbottom=False, left=False, labelleft=False, right=True, labelright=True)
+
     plt.savefig(filename, dpi=200)
     plt.close()
+
 
 def get_mask_from_lengths(lengths, max_len=None):
     batch_size = lengths.shape[0]
     if max_len is None:
         max_len = torch.max(lengths).item()
 
-    ids = torch.arange(0, max_len).unsqueeze(0).expand(batch_size, -1).to(device)
+    ids = torch.arange(0, max_len).unsqueeze(
+        0).expand(batch_size, -1).to(device)
     mask = (ids >= lengths.unsqueeze(1).expand(-1, max_len))
 
     return mask
-
-
-
-
 
 
 def get_melgan():
     melgan = torch.hub.load('descriptinc/melgan-neurips', 'load_melgan')
     return melgan
 
+
 def melgan_infer(mel, melgan, path):
     wav = melgan.inverse(mel).squeeze(0).detach().cpu().numpy()
     soundfile.write(path, wav, hp.sampling_rate)
-    
+
+
 def melgan_infer_batch(mel, melgan):
     return melgan.inverse(mel).cpu().numpy()
 
 
 def get_waveglow():
-    waveglow = torch.hub.load('nvidia/DeepLearningExamples:torchhub', 'nvidia_waveglow')
+    waveglow = torch.hub.load(
+        'nvidia/DeepLearningExamples:torchhub', 'nvidia_waveglow')
     waveglow = waveglow.remove_weightnorm(waveglow)
     waveglow.eval()
     for m in waveglow.modules():
@@ -150,17 +159,20 @@ def get_waveglow():
             setattr(m, 'padding_mode', 'zeros')
     return waveglow
 
+
 def waveglow_infer(mel, waveglow, path):
     with torch.no_grad():
         wav = waveglow.infer(mel,)
         wav = wav.cpu().numpy()
     soundfile.write(path, hp.sampling_rate, wav)
-    
+
+
 def waveglow_infer_batch(mel, waveglow):
     with torch.no_grad():
         wav = waveglow.infer(mel)
         wav = wav.cpu().numpy()
     return wav
+
 
 def pad_1D(inputs, PAD=0):
 
@@ -174,6 +186,7 @@ def pad_1D(inputs, PAD=0):
     padded = np.stack([pad_data(x, max_len, PAD) for x in inputs])
 
     return padded
+
 
 def pad_2D(inputs, maxlen=None):
 
@@ -195,6 +208,7 @@ def pad_2D(inputs, maxlen=None):
         output = np.stack([pad(x, max_len) for x in inputs])
 
     return output
+
 
 def pad(input_ele, mel_max_length=None):
     if mel_max_length:

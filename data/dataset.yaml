@@ -1,41 +1,52 @@
+# * compatible with MelGAN NeurIPS 2019
+# https://github.com/descriptinc/melgan-neurips/blob/master/mel2wav/modules.py
+
+
 LJSpeech:
+    # dsp
     sampling_rate : 22050
-    filter_length : 1024
-    hop_length : 256
+    n_fft : 1024
     win_length : 1024
-    f0_min : 71.0
-    f0_max : 795.8
+    hop_length : 256
+    n_mels : 80
+    mel_fmin : 0.0
+    mel_fmax : None
+
+    # fastspeech2
+    f0_min : 70.0
+    f0_max : 800.8
     energy_min : 0.0
     energy_max : 315.0
     use_spk_embed : False
     
-Blizzard2013:
-    sampling_rate : 16000
-    filter_length : 800
-    hop_length : 200
-    win_length : 800
-    f0_min : 71.0
-    f0_max : 786.7
-    energy_min : 21.23
-    energy_max : 101.02
-    use_spk_embed : False
-    
 VCTK:
+    # dsp
     sampling_rate : 22050
-    filter_length : 1024
-    hop_length : 256
+    n_fft : 1024
     win_length : 1024
+    hop_length : 256
+    n_mels : 80
+    mel_fmin : 0.0
+    mel_fmax : None
+
+    # fastspeech2
     f0_min : 70.0
-    f0_max : 793.0
-    energy_min : 0.22
-    energy_max : 1048.7
+    f0_max : 800.0
+    energy_min : 0.0
+    energy_max : 1050.0
     use_spk_embed : True
     
 LibriTTS:
+    # dsp
     sampling_rate : 22050
-    filter_length : 1024
-    hop_length : 256
+    n_fft : 1024
     win_length : 1024
+    hop_length : 256
+    n_mels : 80
+    mel_fmin : 0.0
+    mel_fmax : None
+
+    # fastspeech2
     f0_min : 70.0
     f0_max : 800.0
     energy_min : 0.0

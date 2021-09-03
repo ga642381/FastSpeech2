@@ -1,19 +1,7 @@
 import os
 import yaml
 
-
-### Dataset(LJSpeech, Blizzard2013, VCTK, LibriTTS) ###
-#dataset = "LJSpeech"
-#data_path = "/dataset/LJSpeech-1.1"
-
-#dataset = "Blizzard2013"
-#data_path = "./Blizzard-2013/train/segmented/"
-
-#dataset = "VCTK"
-#data_path = "/home/kaiwei/SpeechNet/FastSpeech2/dataset/VCTK-Corpus"
-
-dataset = "LibriTTS"
-data_path = "./dataset/LibriTTS/train-clean-360"
+dataset = "VCTK"  # [LibriTTS, VCTK, LJSpeech]
 mfa_path = "./MFA"
 
 ### Text ###
@@ -47,24 +35,23 @@ min_seq_len = 20
 with open('./data/dataset.yaml', 'r') as f:
     dataset_config = yaml.load(f, Loader=yaml.FullLoader)
 
-max_wav_value = 32768.0
-n_mel_channels = 80
-mel_fmin = 0.0
-mel_fmax = None
-
+# max_wav_value = 32768.0
 # Audio and mel
 sampling_rate = dataset_config[dataset]['sampling_rate']
-filter_length = dataset_config[dataset]['filter_length']
-hop_length    = dataset_config[dataset]['hop_length']
-win_length    = dataset_config[dataset]['win_length']
+n_fft = dataset_config[dataset]['n_fft']
+hop_length = dataset_config[dataset]['hop_length']
+win_length = dataset_config[dataset]['win_length']
+n_mels = dataset_config[dataset]['n_mels']
+mel_fmin = dataset_config[dataset]['mel_fmin']
+mel_fmax = dataset_config[dataset]['mel_fmax']
 
-min_level_db = -100 
-fmin = 40 #why
 
+# min_level_db = -100
+# fmin = 40  # why
 
 # Quantization for F0 and energy
-f0_min     = dataset_config[dataset]['f0_min']
-f0_max     = dataset_config[dataset]['f0_max']
+f0_min = dataset_config[dataset]['f0_min']
+f0_max = dataset_config[dataset]['f0_max']
 energy_min = dataset_config[dataset]['energy_min']
 energy_max = dataset_config[dataset]['energy_max']
 n_bins = 256
@@ -77,11 +64,11 @@ spk_embed_weight_std = 0.01
 
 ### Checkpoints and synthesis path ###
 preprocessed_path = os.path.join("./preprocessed/", dataset)
-checkpoint_path   = os.path.join("./states/ckpt/", dataset)
-synth_path        = os.path.join("./states/synth/", dataset)
-eval_path         = os.path.join("./states/eval/", dataset)
-log_path          = os.path.join("./states/log", dataset)
-test_path         = os.path.join("./states/results/")
+checkpoint_path = os.path.join("./states/ckpt/", dataset)
+synth_path = os.path.join("./states/synth/", dataset)
+eval_path = os.path.join("./states/eval/", dataset)
+log_path = os.path.join("./states/log", dataset)
+test_path = os.path.join("./states/results/")
 
 
 ### Optimizer ###
