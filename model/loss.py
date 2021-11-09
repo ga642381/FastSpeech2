@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
+
 import hparams as hp
+
 
 class FastSpeech2Loss(nn.Module):
     """ FastSpeech2 Loss """
@@ -10,16 +12,32 @@ class FastSpeech2Loss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.mae_loss = nn.L1Loss()
 
-    def forward(self, log_d_predicted, log_d_target, p_predicted, p_target, e_predicted, e_target, mel, mel_postnet, mel_target, src_mask, mel_mask):
+    def forward(
+        self,
+        mel,
+        mel_postnet,
+        log_d_predicted,
+        p_predicted,
+        e_predicted,
+        log_d_target,
+        f0_gt,
+        e_target,
+        mel_target,
+        src_mask,
+        mel_mask,
+    ):
+        """
+        all input will be flattened before mse or mae
+        """
         log_d_target.requires_grad = False
-        p_target.requires_grad = False
+        f0_gt.requires_grad = False
         e_target.requires_grad = False
         mel_target.requires_grad = False
-        
+
         log_d_predicted = log_d_predicted.masked_select(src_mask)
         log_d_target = log_d_target.masked_select(src_mask)
         p_predicted = p_predicted.masked_select(src_mask)
-        p_target = p_target.masked_select(src_mask)
+        f0_gt = f0_gt.masked_select(src_mask)
         e_predicted = e_predicted.masked_select(src_mask)
         e_target = e_target.masked_select(src_mask)
 
@@ -31,7 +49,7 @@ class FastSpeech2Loss(nn.Module):
         mel_postnet_loss = self.mse_loss(mel_postnet, mel_target)
 
         d_loss = self.mae_loss(log_d_predicted, log_d_target)
-        p_loss = self.mae_loss(p_predicted, p_target)
+        p_loss = self.mae_loss(p_predicted, f0_gt)
         e_loss = self.mae_loss(e_predicted, e_target)
-        
+
         return mel_loss, mel_postnet_loss, d_loss, torch.log(p_loss), torch.log(e_loss)

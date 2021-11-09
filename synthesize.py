@@ -1,22 +1,21 @@
+import argparse
+import os
+import random
+import re
+from string import punctuation
+
+import numpy as np
+import soundfile
 import torch
 import torch.nn as nn
-import numpy as np
-import os
-import argparse
-import re
-import random
-from string import punctuation
 from g2p_en import G2p
 
-from fastspeech2 import FastSpeech2
-from text import text_to_sequence, sequence_to_text
+import audio as Audio
 import hparams as hp
 import utils
-import audio as Audio
-from utils import get_mask_from_lengths
-import soundfile
-
-
+from fastspeech2 import FastSpeech2
+from text import sequence_to_text, text_to_sequence
+from utils.mask import get_mask_from_lengths
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 if hp.use_spk_embed:

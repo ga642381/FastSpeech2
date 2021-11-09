@@ -3,7 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 temp/
-
+processed/
+records/
 # C extensions
 *.so
 

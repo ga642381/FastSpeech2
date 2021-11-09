@@ -1,12 +1,15 @@
 import os
+from datetime import datetime
+from pathlib import Path
+
 import yaml
 
-dataset = "VCTK"  # [LibriTTS, VCTK, LJSpeech]
+dataset = "LibriTTS"  # [LibriTTS, VCTK]
 mfa_path = "./MFA"
 
 ### Text ###
 # g2p_en
-text_cleaners = ['english_cleaners']
+text_cleaners = ["english_cleaners"]
 
 
 ### FastSpeech 2 ###
@@ -32,65 +35,54 @@ max_seq_len = 1000
 min_seq_len = 20
 
 ### dataset ###
-with open('./data/dataset.yaml', 'r') as f:
+with open("./data/dataset.yaml", "r") as f:
     dataset_config = yaml.load(f, Loader=yaml.FullLoader)
 
 # max_wav_value = 32768.0
 # Audio and mel
-sampling_rate = dataset_config[dataset]['sampling_rate']
-n_fft = dataset_config[dataset]['n_fft']
-hop_length = dataset_config[dataset]['hop_length']
-win_length = dataset_config[dataset]['win_length']
-n_mels = dataset_config[dataset]['n_mels']
-mel_fmin = dataset_config[dataset]['mel_fmin']
-mel_fmax = dataset_config[dataset]['mel_fmax']
+sampling_rate = dataset_config[dataset]["sampling_rate"]
+n_fft = dataset_config[dataset]["n_fft"]
+hop_length = dataset_config[dataset]["hop_length"]
+win_length = dataset_config[dataset]["win_length"]
+n_mels = dataset_config[dataset]["n_mels"]
+mel_fmin = dataset_config[dataset]["mel_fmin"]
+mel_fmax = dataset_config[dataset]["mel_fmax"]
 
 
 # min_level_db = -100
 # fmin = 40  # why
 
 # Quantization for F0 and energy
-f0_min = dataset_config[dataset]['f0_min']
-f0_max = dataset_config[dataset]['f0_max']
-energy_min = dataset_config[dataset]['energy_min']
-energy_max = dataset_config[dataset]['energy_max']
+f0_min = dataset_config[dataset]["f0_min"]
+f0_max = dataset_config[dataset]["f0_max"]
+energy_min = dataset_config[dataset]["energy_min"]
+energy_max = dataset_config[dataset]["energy_max"]
 n_bins = 256
 
 # Speaker embedding
-use_spk_embed = dataset_config[dataset]['use_spk_embed']
+use_spk_embed = dataset_config[dataset]["use_spk_embed"]
 spk_embed_dim = 256
 spk_embed_weight_std = 0.01
 
-
-### Checkpoints and synthesis path ###
-preprocessed_path = os.path.join("./preprocessed/", dataset)
-checkpoint_path = os.path.join("./states/ckpt/", dataset)
-synth_path = os.path.join("./states/synth/", dataset)
-eval_path = os.path.join("./states/eval/", dataset)
-log_path = os.path.join("./states/log", dataset)
-test_path = os.path.join("./states/results/")
-
-
 ### Optimizer ###
-batch_size = 16
-epochs = 1000
+batch_size = 2
+epochs = 100  # 1000
 n_warm_up_step = 4000
 grad_clip_thresh = 1.0
 acc_steps = 1
 
 betas = (0.9, 0.98)
 eps = 1e-9
-weight_decay = 0.
+weight_decay = 0.0
 
 # Vocoder
-vocoder = 'melgan'
+vocoder = "melgan"
 
 # Log-scaled duration
-log_offset = 1.
+log_offset = 1.0
 
 # Save, log and synthesis
 save_step = 20000
-synth_step = 2000
 eval_step = 2000
 eval_size = 256
 log_step = 1000
