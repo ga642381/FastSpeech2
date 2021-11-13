@@ -1,7 +1,6 @@
+import hparams as hp
 import torch
 import torch.nn as nn
-
-import hparams as hp
 
 
 class FastSpeech2Loss(nn.Module):
@@ -52,4 +51,10 @@ class FastSpeech2Loss(nn.Module):
         p_loss = self.mae_loss(p_predicted, f0_gt)
         e_loss = self.mae_loss(e_predicted, e_target)
 
-        return mel_loss, mel_postnet_loss, d_loss, torch.log(p_loss), torch.log(e_loss)
+        return (
+            mel_loss,
+            mel_postnet_loss,
+            d_loss,
+            0.1 * torch.log(p_loss),
+            0.1 * torch.log(e_loss),
+        )

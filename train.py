@@ -189,32 +189,22 @@ class Trainer:
         logger.add_scalar("Loss/e_loss", e_loss, self.train_step)
 
     def __synth(
-        self,
-        mel_gt: torch.Tensor,
-        mel_pred: torch.Tensor,
-        mel_lens: torch.Tensor,
-        data_ids,
-    ) -> int:
+        self, mel: torch.Tensor, mel_lens: torch.Tensor, data_ids, save_dir: Path
+    ):
         # mel.shape : (batch, time, mel_dim)
-        synth_num = 0
-        save_dir = self.paths["synth_path"] / str(self.train_step)
-        save_gt_dir = save_dir / "gt"
-        save_pred_dir = save_dir / "pred"
-        if not save_dir.exists():
-            save_gt_dir.mkdir(parents=True, exist_ok=True)
-            save_pred_dir.mkdir(parents=True, exist_ok=True)
-            wav_lens = [m * self.vocoder.hop_length for m in mel_lens]
-            wav_gt = self.vocoder.mel2wav(mel_gt.transpose(1, 2))
-            wav_pred = self.vocoder.mel2wav(mel_pred.transpose(1, 2))
-
-            synth_num += utils.save_audios(wav_gt, wav_lens, data_ids, save_gt_dir)
-            synth_num += utils.save_audios(wav_pred, wav_lens, data_ids, save_pred_dir)
-        return synth_num
+        save_dir.mkdir(parents=True, exist_ok=True)
+        wav_lens = [m * self.vocoder.hop_length for m in mel_lens]
+        wav = self.vocoder.mel2wav(mel.transpose(1, 2))
+        utils.save_audios(wav, wav_lens, data_ids, save_dir)
 
     def __eval_and_synth(self):
         self.model.eval()
+        print(f"[Evaluation] Evaluating at step {str(self.train_step)}")
         batch_num = 0
-        synth_num = 0
+        gt_synth_path = self.paths["synth_path"] / "gt"
+        pred_synth_path = self.paths["synth_path"] / str(self.train_step)
+
+        synth_gt = True if not gt_synth_path.exists() else False
         # total_loss, mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss
         L = (0, 0, 0, 0, 0, 0)
         for batches in self.valid_loader:
@@ -235,11 +225,21 @@ class Trainer:
                     l = (total_loss, mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss)
                     L = tuple(a + b for a, b in zip(L, l))
 
-                synth_num += self.__synth(
-                    mel_gt=gt_batch[-1],
-                    mel_pred=model_pred[1],
+                # synthesize ground truth mel spectrogram
+                if synth_gt:
+                    self.__synth(
+                        mel=gt_batch[-1],
+                        mel_lens=mel_len,
+                        data_ids=batch["data_id"],
+                        save_dir=gt_synth_path,
+                    )
+
+                # synthesize predicted mel spectrogram
+                self.__synth(
+                    mel=model_pred[1],
                     mel_lens=mel_len,
                     data_ids=batch["data_id"],
+                    save_dir=pred_synth_path,
                 )
 
                 batch_num += 1
@@ -248,9 +248,15 @@ class Trainer:
         L = (l / batch_num for l in L)
         self.__log("eval", *L)
         self.model.train()
+
         # synth info
-        curr_synth_path = self.paths["synth_path"] / str(self.train_step)
-        print(f"[Evaluation] {synth_num} audios were saved in {curr_synth_path}")
+        if synth_gt:
+            print(
+                f"[Evaluation] {len(os.listdir(gt_synth_path))} audios were saved in {gt_synth_path}"
+            )
+        print(
+            f"[Evaluation] {len(os.listdir(pred_synth_path))} audios were saved in {pred_synth_path}"
+        )
 
     def __load_model(self, checkpoint_path, restore_step):
         checkpoint = torch.load(checkpoint_path / f"checkpoint_{restore_step}.pth.tar")

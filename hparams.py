@@ -65,7 +65,7 @@ spk_embed_dim = 256
 spk_embed_weight_std = 0.01
 
 ### Optimizer ###
-batch_size = 2
+batch_size = 16
 epochs = 100  # 1000
 n_warm_up_step = 4000
 grad_clip_thresh = 1.0
@@ -82,8 +82,7 @@ vocoder = "melgan"
 log_offset = 1.0
 
 # Save, log and synthesis
-save_step = 20000
-eval_step = 2000
-eval_size = 256
+save_step = 10000
+eval_step = 10000
 log_step = 1000
 clear_Time = 20

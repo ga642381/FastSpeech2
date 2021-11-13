@@ -72,18 +72,21 @@ class Dataset(Dataset):
     def collate_fn(self, batch):
         # samples_num   : 256 samples
         # batch_size    : 16  samples
-        # seg_list       : 16 x 16
-        # output         : 16 batches (256 samples)
+        # seg_list      : 16 x 16
+        # output        : 16 batches (256 samples)
         samples_num = len(batch)
+
         # last batch, contain few samples (during evaluation)
         # e.g. last 8 samples, and sorting is not required.
-        if samples_num < hp.batch_size:
-            batch_size = samples_num
-            seg_lists = [list(range(batch_size))]  # only 1 seg_list
+        if samples_num < hp.batch_size ** 2:
+            batches_size = math.ceil(samples_num / hp.batch_size)
+            idxs = np.arange(samples_num)
+            seg_lists = np.array_split(idxs, batches_size)
 
         # collect batches with sorting
         else:
             batch_size = hp.batch_size
+            batches_size = int(samples_num / batch_size)
             len_arr = np.array(
                 [b["text"].shape[0] for b in batch]
             )  # lens of 256 samples
@@ -98,17 +101,8 @@ class Dataset(Dataset):
                     seg_lists.append(np.arange(i * batch_size, (i + 1) * batch_size))
 
         output = list()
-        batches_size = int(samples_num / batch_size)
-        assert (
-            samples_num % batch_size == 0
-        ), f"samples_num: {samples_num}, batch_size: {batch_size}"
-
         for i in range(batches_size):
             output.append(self.reprocess(batch, seg_lists[i]))
-
-        # shuffle batch of batchs to solve the problem that
-        # during synth, it always synthesizes short(long) sentences
-        # 2020.10.03 KaiWei
         random.shuffle(output)
         return output
 
@@ -141,7 +135,6 @@ class Dataset(Dataset):
         # pitch and energy from mel level to phone level 2020.11.26 kaiwei
         f0s = average_to_phone_level(f0s, Ds)
         energies = average_to_phone_level(energies, Ds)
-        #
 
         out = {
             "data_id": data_ids,

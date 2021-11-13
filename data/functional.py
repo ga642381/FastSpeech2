@@ -36,23 +36,6 @@ def _save_text(path, text):
         f.write(text)
 
 
-# def get_spk_table():
-#     '''
-#     spk_table     : {'14' :0, '16': 1, ...}
-#     inv_spk_table : { 0:'14', 1: '16', ...}
-#     '''
-#     spk_table = {}
-#     spk_id = 0
-
-#     spks = os.listdir(hp.data_path)
-#     spks.sort()
-#     for spk in spks:
-#         spk_table[spk] = spk_id
-#         spk_id += 1
-#     inv_spk_table = {v: k for k, v in spk_table.items()}
-#     return spk_table, inv_spk_table
-
-
 def prepare_mfa(wav_dir: Path, txt_dir: Path, mfa_data_dir: Path):
     """
     * Use [filename].normalized.txt ot generate [filename].txt
@@ -150,6 +133,15 @@ def process_utterance(
         print("duration problem: {}".format(wav_path))
         return None
 
+    try:
+        f_max = max(f0)
+        f_min = min([f for f in f0 if f > 0])
+        e_max = max(energy)
+        e_min = min(energy)
+    except Exception as e:
+        print(f"[INFO] error occured while processing {basename} : {e}")
+        return None
+
     # === Save Data === #
     # 1. Save alignment
     ali_filename = f"{basename}.npy"
@@ -182,10 +174,6 @@ def process_utterance(
     _save_text(text_path, text)
 
     # 6. Write Metadata
-    f_max = max(f0)
-    f_min = min([f for f in f0 if f > 0])
-    e_max = max(energy)
-    e_min = min(energy)
     n_frames = mel.shape[1]
     utt_data = {
         "data_id": basename,
@@ -216,6 +204,7 @@ def build_dataset(in_dir, out_dir, n_val_per_spker=1):
     if not Path(out_dir / "TextGrid").exists():
         raise FileNotFoundError(f'[ERROR] "TextGird" not found in {out_dir}')
 
+    # !TODO multiprocessing is possible here
     random.seed(829)
     for spker_dir in tqdm(spker_dirs):
         file_paths = []
@@ -228,7 +217,8 @@ def build_dataset(in_dir, out_dir, n_val_per_spker=1):
             file_paths.append((spk, subdir, basename))
 
         random.shuffle(file_paths)
-        for i, file_path in enumerate(file_paths):
+        valid_num = 0
+        for file_path in file_paths:
             # ! core of processing utterence
             spk = file_path[0]
             subdir = file_path[1]
@@ -237,8 +227,9 @@ def build_dataset(in_dir, out_dir, n_val_per_spker=1):
             utt_result = process_utterance(in_dir, out_dir, spk, subdir, basename)
 
             if utt_result is not None:
-                if i < n_val_per_spker:
+                if valid_num < n_val_per_spker:
                     valid.append(utt_result)
+                    valid_num += 1
                 else:
                     train.append(utt_result)
 
