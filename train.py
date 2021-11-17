@@ -73,7 +73,7 @@ class Trainer:
                     total_loss = total_loss / hp.acc_steps
                     total_loss.backward()
                     if self.train_step % hp.acc_steps == 0:
-                        nn.utils.clip_grad_norm(
+                        nn.utils.clip_grad_norm_(
                             self.model.parameters(), hp.grad_clip_thresh
                         )
                         self.scheduled_optim.step_and_update_lr()
@@ -284,12 +284,11 @@ def main(args):
     record_idx = f"{hp.dataset}_{date_time}"
     paths = {}
     paths["data_dir"] = Path(args.data_dir).resolve()
-    paths["preprocessed_path"] = Path(f"./records/{record_idx}/preprocessed").resolve()
-    paths["checkpoint_path"] = Path(f"./records/{record_idx}/ckpt").resolve()
-    paths["synth_path"] = Path(f"./records/{record_idx}/synth").resolve()
-    paths["eval_path"] = Path(f"./records/{record_idx}/eval").resolve()
-    paths["log_path"] = Path(f"./records/{record_idx}/log").resolve()
-    record_file_path = Path(f"./records/comments.txt").resolve()
+    record_root = Path(args.record_dir).resolve()
+    paths["checkpoint_path"] = Path(record_root / record_idx / "ckpt").resolve()
+    paths["synth_path"] = Path(record_root / record_idx / "synth").resolve()
+    paths["log_path"] = Path(record_root / record_idx / "log").resolve()
+    record_file_path = Path(record_root / "comments.txt").resolve()
 
     utils.make_paths(list(paths.values()))
     utils.add_comment(record_file_path, record_idx, args.comment)
@@ -303,6 +302,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("data_dir", type=str)
+    parser.add_argument("--record_dir", type=str, default="./records")
     parser.add_argument("--comment", type=str, default="None")
     parser.add_argument("--restore_step", type=int, default=0)
     args = parser.parse_args()

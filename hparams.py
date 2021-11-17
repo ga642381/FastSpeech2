@@ -1,7 +1,3 @@
-import os
-from datetime import datetime
-from pathlib import Path
-
 import yaml
 
 dataset = "LibriTTS"  # [LibriTTS, VCTK]
@@ -38,7 +34,6 @@ min_seq_len = 20
 with open("./data/dataset.yaml", "r") as f:
     dataset_config = yaml.load(f, Loader=yaml.FullLoader)
 
-# max_wav_value = 32768.0
 # Audio and mel
 sampling_rate = dataset_config[dataset]["sampling_rate"]
 n_fft = dataset_config[dataset]["n_fft"]
@@ -48,9 +43,6 @@ n_mels = dataset_config[dataset]["n_mels"]
 mel_fmin = dataset_config[dataset]["mel_fmin"]
 mel_fmax = dataset_config[dataset]["mel_fmax"]
 
-
-# min_level_db = -100
-# fmin = 40  # why
 
 # Quantization for F0 and energy
 f0_min = dataset_config[dataset]["f0_min"]
@@ -85,4 +77,3 @@ log_offset = 1.0
 save_step = 10000
 eval_step = 10000
 log_step = 1000
-clear_Time = 20

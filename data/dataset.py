@@ -151,7 +151,7 @@ class Dataset(Dataset):
 
         return out
 
-    def get_metadata(self, data_dir, split):
+    def get_metadata(self, data_dir):
         with open(data_dir / "metadata.json", "r", encoding="utf-8") as f:
             metadata = json.load(f)
         return metadata

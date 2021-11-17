@@ -55,6 +55,6 @@ class FastSpeech2Loss(nn.Module):
             mel_loss,
             mel_postnet_loss,
             d_loss,
-            0.1 * torch.log(p_loss),
-            0.1 * torch.log(e_loss),
+            0.1 * p_loss,
+            0.01 * e_loss,
         )

@@ -1,7 +1,7 @@
+import numpy as np
+import pyworld as pw
 import torch
 import torch.nn as nn
-import pyworld as pw
-import numpy as np
 from torchaudio.transforms import MelSpectrogram, Spectrogram
 
 
@@ -15,7 +15,7 @@ class LogMelSpectrogram(nn.Module):
         win_length: int,
         hop_length: int,
         f_min: float,
-        n_mels: int
+        n_mels: int,
     ):
         super().__init__()
 
@@ -34,7 +34,7 @@ class LogMelSpectrogram(nn.Module):
             f_min=f_min,
             n_mels=n_mels,
             power=1,
-            center=False
+            center=False,
         )
 
     def forward(self, wav_tensor: torch.Tensor) -> torch.Tensor:
@@ -55,20 +55,17 @@ TODO : possible to use espnet's energy extractor and dio
 
 class Energy(nn.Module):
     def __init__(
-        self,
-        n_fft: int,
-        win_length: int,
-        hop_length: int,
+        self, n_fft: int, win_length: int, hop_length: int,
     ):
         super().__init__()
         self.n_fft = n_fft
         self.win_length = win_length
         self.hop_length = hop_length
 
+        # default is power of 2
+        # we use power=1 to get a smaller range of energy.
         self.spectrogram = Spectrogram(
-            n_fft=n_fft,
-            hop_length=hop_length,
-            win_length=win_length
+            n_fft=n_fft, hop_length=hop_length, win_length=win_length, power=1
         )
 
     def forward(self, wav: torch.Tensor) -> torch.Tensor:
@@ -87,8 +84,10 @@ def get_f0_from_wav(wav, sample_rate, hop_length):
     """
     pyworld expectes wav in type double(float64)
     """
-    f0, t = pw.dio(wav.astype(np.float64), sample_rate,
-                   frame_period=hop_length/sample_rate*1000)
-    f0 = pw.stonemask(wav.astype(np.float64), f0, t,
-                      sample_rate).astype(np.float32)
+    f0, t = pw.dio(
+        wav.astype(np.float64),
+        sample_rate,
+        frame_period=hop_length / sample_rate * 1000,
+    )
+    f0 = pw.stonemask(wav.astype(np.float64), f0, t, sample_rate).astype(np.float32)
     return f0

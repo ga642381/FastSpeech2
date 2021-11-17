@@ -51,20 +51,3 @@ class Vocoder:
 
     def mel2wav(self, mel: torch.Tensor) -> torch.Tensor:
         return self.model.inverse(mel)
-
-
-# def wav2mel_np(wav: np.ndarray, vocoder) -> np.ndarray:
-#     """
-#     Args:
-#     * wav : numpy array, shape (n_samples, )
-#     * vocoder : Vocoder (melgan)
-
-#     Return:
-#     * mel spectrogram : numpy array, shape (n_mels, time)
-#     """
-#     mel_tensor = vocoder.wav2mel(torch.tensor(wav).unsqueeze(0)).squeeze(0)
-#     return mel_tensor.cpu().numpy()
-
-
-# def mel2wav_np(mel: np.ndarray, vocoder) -> np.ndarray:
-#     pass
