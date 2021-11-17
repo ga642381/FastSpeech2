@@ -34,7 +34,7 @@ class Dataset(Dataset):
         self.data_dir = data_dir
         self.split = split
         self.sort = sort
-        self.metadata = self.get_metadata(data_dir, split)
+        self.metadata = self.get_metadata(data_dir)
         self.dataset = self.metadata[split]
         self.spker_table = self.metadata["spker_table"]  # {spker: id}
 
