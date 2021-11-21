@@ -31,7 +31,7 @@ max_seq_len = 1000
 min_seq_len = 20
 
 ### dataset ###
-with open("./data/dataset.yaml", "r") as f:
+with open("./config/dataset.yaml", "r") as f:
     dataset_config = yaml.load(f, Loader=yaml.FullLoader)
 
 # Audio and mel
@@ -58,7 +58,6 @@ spk_embed_weight_std = 0.01
 
 ### Optimizer ###
 batch_size = 16
-epochs = 100  # 1000
 n_warm_up_step = 4000
 grad_clip_thresh = 1.0
 acc_steps = 1
@@ -66,6 +65,8 @@ acc_steps = 1
 betas = (0.9, 0.98)
 eps = 1e-9
 weight_decay = 0.0
+
+total_steps = 600000
 
 # Vocoder
 vocoder = "melgan"

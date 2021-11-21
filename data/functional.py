@@ -4,7 +4,7 @@ import random
 from functools import partial
 from pathlib import Path
 
-import hparams as hp
+from config import hparams as hp
 import librosa
 import numpy as np
 import tgt

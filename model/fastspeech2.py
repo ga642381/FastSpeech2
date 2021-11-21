@@ -1,4 +1,4 @@
-import hparams as hp
+from config import hparams as hp
 import torch
 import torch.nn as nn
 from transformer.Layers import PostNet
@@ -83,11 +83,16 @@ class FastSpeech2(nn.Module):
 
         # === Decoder === #
         decoder_output = self.decoder(variance_adaptor_output, mel_mask)
-        mel_output = self.to_mel(decoder_output)
-        mel_output_postnet = self.postnet(mel_output) + mel_output
+        mel = self.to_mel(decoder_output)
+        mel_postnet = self.postnet(mel) + mel
+
+        # === Masking === #
+        if mel_mask is not None:
+            mel = mel.masked_fill(mel_mask.unsqueeze(-1), 0)
+            mel_postnet = mel_postnet.masked_fill(mel_mask.unsqueeze(-1), 0)
 
         # === Output === #
-        pred = (mel_output, mel_output_postnet, d_pred, p_pred, e_pred)
+        pred = (mel, mel_postnet, d_pred, p_pred, e_pred)
         return (pred, text_mask, mel_mask, mel_len)
 
 

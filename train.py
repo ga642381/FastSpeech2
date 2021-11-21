@@ -1,20 +1,17 @@
 import argparse
-import inspect
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import torch
 import torch.nn as nn
-import torchaudio
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
-import hparams as hp
 import utils
 from audio.wavmel import Vocoder
+from config import hparams as hp
 from data.dataset import Dataset
 from model import FastSpeech2, FastSpeech2Loss, ScheduledOptim
 
@@ -51,8 +48,7 @@ class Trainer:
 
     def train(self):
         self.model.train()
-        for epoch in range(hp.epochs):
-            total_step = hp.epochs * len(self.train_loader) * hp.batch_size
+        while self.train_step < hp.total_steps:
             for batches in self.train_loader:
                 for batch in batches:
                     print(f"[Training] step: {self.train_step}", end="\r", flush=True)
@@ -207,7 +203,7 @@ class Trainer:
         synth_gt = True if not gt_synth_path.exists() else False
         # total_loss, mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss
         L = (0, 0, 0, 0, 0, 0)
-        for batches in self.valid_loader:
+        for batches in tqdm(self.valid_loader):
             for batch in batches:
                 model_batch, gt_batch = utils.data_to_device(batch, self.device)
                 with torch.no_grad():
@@ -223,6 +219,8 @@ class Trainer:
                     total_loss = mel_loss + mel_postnet_loss + d_loss + f_loss + e_loss
 
                     l = (total_loss, mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss)
+
+                    # accumulate loss
                     L = tuple(a + b for a, b in zip(L, l))
 
                 # synthesize ground truth mel spectrogram
@@ -241,6 +239,13 @@ class Trainer:
                     data_ids=batch["data_id"],
                     save_dir=pred_synth_path,
                 )
+                # plot ground truth and predicted mel spectrogram
+                utils.plot_mel(
+                    mel_gt=gt_batch[-1],
+                    mel_pred=model_pred[1],
+                    data_ids=batch["data_id"],
+                    save_dir=pred_synth_path,
+                )
 
                 batch_num += 1
 
@@ -252,10 +257,10 @@ class Trainer:
         # synth info
         if synth_gt:
             print(
-                f"[Evaluation] {len(os.listdir(gt_synth_path))} audios were saved in {gt_synth_path}"
+                f"[Evaluation] {len(os.listdir(gt_synth_path))} files were saved in {gt_synth_path}"
             )
         print(
-            f"[Evaluation] {len(os.listdir(pred_synth_path))} audios were saved in {pred_synth_path}"
+            f"[Evaluation] {len(os.listdir(pred_synth_path))} files were saved in {pred_synth_path}"
         )
 
     def __load_model(self, checkpoint_path, restore_step):

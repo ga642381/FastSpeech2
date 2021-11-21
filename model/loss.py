@@ -1,4 +1,4 @@
-import hparams as hp
+from config import hparams as hp
 import torch
 import torch.nn as nn
 
@@ -40,9 +40,11 @@ class FastSpeech2Loss(nn.Module):
         e_predicted = e_predicted.masked_select(src_mask)
         e_target = e_target.masked_select(src_mask)
 
-        mel = mel.masked_select(mel_mask.unsqueeze(-1))
-        mel_postnet = mel_postnet.masked_select(mel_mask.unsqueeze(-1))
-        mel_target = mel_target.masked_select(mel_mask.unsqueeze(-1))
+        # 2021/11/21 we do the mel masking in FastSpeech2 model
+        # It's possible to do masking for d, p, e in the model too.
+        # mel = mel.masked_select(mel_mask.unsqueeze(-1))
+        # mel_postnet = mel_postnet.masked_select(mel_mask.unsqueeze(-1))
+        # mel_target = mel_target.masked_select(mel_mask.unsqueeze(-1))
 
         mel_loss = self.mse_loss(mel, mel_target)
         mel_postnet_loss = self.mse_loss(mel_postnet, mel_target)
@@ -55,6 +57,6 @@ class FastSpeech2Loss(nn.Module):
             mel_loss,
             mel_postnet_loss,
             d_loss,
-            0.1 * p_loss,
-            0.01 * e_loss,
+            0.01 * p_loss,
+            0.1 * e_loss,
         )

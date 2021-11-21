@@ -2,7 +2,7 @@ import argparse
 import os
 from pathlib import Path
 
-import hparams as hp
+from config import hparams as hp
 
 if hp.dataset == "LibriTTS" or hp.dataset == "VCTK":
     from data import functional as F

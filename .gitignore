@@ -5,6 +5,7 @@ __pycache__/
 temp/
 processed/
 records/
+test.ipynb
 # C extensions
 *.so
 

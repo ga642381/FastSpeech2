@@ -4,7 +4,7 @@ import os
 import random
 from pathlib import Path
 
-import hparams as hp
+from config import hparams as hp
 import numpy as np
 import torch
 from text import sequence_to_text, text_to_sequence

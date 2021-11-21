@@ -1,9 +1,9 @@
 from pathlib import Path
 
-import hparams as hp
+from config import hparams as hp
 import torch
 import torchaudio
-from numpy import save
+from matplotlib import pyplot as plt
 
 
 # === dirs === #
@@ -29,6 +29,30 @@ def save_audios(
         torchaudio.save(save_path, wav.unsqueeze(0), hp.sampling_rate)
         saved_num += 1
     return saved_num
+
+
+# === plot === #
+def plot_mel(mel_gt, mel_pred, data_ids: list, save_dir: Path):
+    """
+    data : [batch of gt, batch of pred]
+    
+    len(data) == 2
+    
+    """
+    assert len(mel_gt) == len(mel_pred)
+    for i, (mel1, mel2) in enumerate(
+        zip(
+            mel_gt.transpose(1, 2).cpu().numpy(), mel_pred.transpose(1, 2).cpu().numpy()
+        )
+    ):
+        fig, axes = plt.subplots(2, 1, squeeze=False)
+        save_path = save_dir / (data_ids[i] + ".png")
+        fig.suptitle(data_ids[i])
+        axes[0][0].imshow(mel1, origin="lower")
+        axes[1][0].imshow(mel2, origin="lower")
+
+        fig.savefig(save_path)
+        plt.close(fig)
 
 
 # === stdio === #

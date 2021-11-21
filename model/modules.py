@@ -2,7 +2,7 @@ import copy
 import math
 from collections import OrderedDict
 
-import hparams as hp
+from config import hparams as hp
 import numpy as np
 import torch
 import torch.nn as nn
