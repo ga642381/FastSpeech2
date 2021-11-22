@@ -1,6 +1,6 @@
 import yaml
 
-dataset = "LibriTTS"  # [LibriTTS, VCTK]
+dataset = "LJSpeech"  # [LibriTTS, VCTK, LJSpeech]
 mfa_path = "./MFA"
 
 ### Text ###
@@ -75,6 +75,6 @@ vocoder = "melgan"
 log_offset = 1.0
 
 # Save, log and synthesis
-save_step = 10000
-eval_step = 10000
+save_step = 25000
+eval_step = save_step
 log_step = 1000

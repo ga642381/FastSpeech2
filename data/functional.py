@@ -4,12 +4,12 @@ import random
 from functools import partial
 from pathlib import Path
 
-from config import hparams as hp
 import librosa
 import numpy as np
 import tgt
 from audio.feature import Energy, get_f0_from_wav, get_feature_from_wav
 from audio.wavmel import Vocoder
+from config import hparams as hp
 from text import _clean_text
 from tqdm import tqdm
 from utils.alignment import get_alignment, get_textgird_contents
@@ -55,7 +55,7 @@ def prepare_mfa(wav_dir: Path, txt_dir: Path, mfa_data_dir: Path):
                 link_file.symlink_to(wav_file.resolve())
 
             # 3. clean text
-            if hp.dataset == "LibriTTS":
+            if hp.dataset in ["LibriTTS", "LJSpeech"]:
                 txt_file = (txt_dir / wav_file.relative_to(wav_dir)).with_suffix(
                     ".normalized.txt"
                 )

@@ -1,6 +1,6 @@
-from config import hparams as hp
 import torch
 import torch.nn as nn
+from config import hparams as hp
 
 
 class FastSpeech2Loss(nn.Module):
@@ -57,6 +57,6 @@ class FastSpeech2Loss(nn.Module):
             mel_loss,
             mel_postnet_loss,
             d_loss,
-            0.01 * p_loss,
+            0.1 * p_loss,
             0.1 * e_loss,
         )

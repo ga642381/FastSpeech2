@@ -4,7 +4,7 @@ from pathlib import Path
 
 from config import hparams as hp
 
-if hp.dataset == "LibriTTS" or hp.dataset == "VCTK":
+if hp.dataset in ["LibriTTS", "VCTK", "LJSpeech"]:
     from data import functional as F
 else:
     raise NotImplementedError(

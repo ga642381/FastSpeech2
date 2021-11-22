@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from config import hparams as hp
 import torch
 import torchaudio
+from config import hparams as hp
 from matplotlib import pyplot as plt
 
 
@@ -52,6 +52,8 @@ def plot_mel(mel_gt, mel_pred, data_ids: list, save_dir: Path):
         axes[1][0].imshow(mel2, origin="lower")
 
         fig.savefig(save_path)
+
+        fig.clear()
         plt.close(fig)
 
 
