@@ -1,265 +1,316 @@
+import argparse
+import os
+from datetime import datetime
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
-import numpy as np
-import argparse
-import os
-import time
-
-from fastspeech2 import FastSpeech2
-from loss import FastSpeech2Loss
-from dataset import Dataset
-from optimizer import ScheduledOptim
-from evaluate import evaluate
-import hparams as hp
 import utils
-import vocoder
+from audio.wavmel import Vocoder
+from config import hparams as hp
+from data.dataset import Dataset
+from model import FastSpeech2, FastSpeech2Loss, ScheduledOptim
 
-class Trainer():
-    def __init__(self):
-        torch.manual_seed(0)
-        self.device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
-        
-        
-    def init_dataset(self):
-        dataset = Dataset("train.txt")
-        loader = DataLoader(dataset, batch_size=hp.batch_size**2, shuffle=True, 
-                            collate_fn=dataset.collate_fn, drop_last=True, num_workers=0)
-        
+
+# gt : ground truth
+# pred : prediction
+class Trainer:
+    def __init__(self, paths, restore_step: int = 0):
+        # === Init === #
+        self.paths = paths
+        self.restore_step = restore_step
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        (
+            self.train_loader,
+            self.valid_loader,
+            self.n_spkers,
+            self.speaker_table,
+            self.inv_speaker_table,
+        ) = self.__init_dataset()
+        self.train_logger, self.eval_logger = self.__init_logger()
+        self.vocoder = Vocoder("melgan")
+
+        # === nn === #
+        self.model = self.__init_model(n_spkers=self.n_spkers).to(self.device)
+        self.loss = FastSpeech2Loss().to(self.device)
+        self.optimizer, self.scheduled_optim = self.__init_optimizer(restore_step)
+        if restore_step > 0:
+            self.__load_model(self.path["checkpoint_path"], restore_step)
+            self.train_step = restore_step
+            print(f"[Training] Model Restored at Step {self.train_step}")
+        else:
+            self.train_step = 0
+            print("[Training] Start New Training")
+
+    def train(self):
+        self.model.train()
+        while self.train_step < hp.total_steps:
+            for batches in self.train_loader:
+                for batch in batches:
+                    print(f"[Training] step: {self.train_step}", end="\r", flush=True)
+
+                    # === 1. Load data === #
+                    model_batch, gt_batch = utils.data_to_device(batch, self.device)
+
+                    # === 2. Forward === #
+                    (model_pred, text_mask, mel_mask, mel_lens) = self.model(
+                        *model_batch
+                    )
+
+                    # === 3. Cal Loss ===#
+                    mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss = self.loss(
+                        *model_pred, *gt_batch, ~text_mask, ~mel_mask,
+                    )
+                    total_loss = mel_loss + mel_postnet_loss + d_loss + f_loss + e_loss
+
+                    # === 4. Backward === #
+                    total_loss = total_loss / hp.acc_steps
+                    total_loss.backward()
+                    if self.train_step % hp.acc_steps == 0:
+                        nn.utils.clip_grad_norm_(
+                            self.model.parameters(), hp.grad_clip_thresh
+                        )
+                        self.scheduled_optim.step_and_update_lr()
+                        self.scheduled_optim.zero_grad()
+
+                    # === 5. Logging === #
+                    if self.train_step % hp.log_step == 0:
+                        self.__log(
+                            "train",
+                            total_loss,
+                            mel_loss,
+                            mel_postnet_loss,
+                            d_loss,
+                            f_loss,
+                            e_loss,
+                        )
+                    # === 6. Eval and Synth === #
+                    if self.train_step % hp.eval_step == 0:
+                        self.__eval_and_synth()
+
+                    # # === 7. Save === #
+                    if self.train_step % hp.save_step == 0:
+                        self.__save_model_and_optimizer()
+
+                    self.train_step += 1
+
+    def __init_dataset(self):
+        train_dataset = Dataset(data_dir=self.paths["data_dir"], split="train")
+        valid_dataset = Dataset(data_dir=self.paths["data_dir"], split="valid")
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=hp.batch_size ** 2,
+            shuffle=True,
+            collate_fn=train_dataset.collate_fn,
+            drop_last=True,
+            num_workers=0,
+        )
+        valid_loader = DataLoader(
+            valid_dataset,
+            batch_size=hp.batch_size ** 2,
+            shuffle=False,
+            collate_fn=train_dataset.collate_fn,
+            drop_last=False,
+            num_workers=0,
+        )
+        n_spkers = len(train_dataset.spker_table)
+        spker_table = train_dataset.spker_table
+        inv_spker_table = {v: k for k, v in spker_table.items()}
+        return train_loader, valid_loader, n_spkers, spker_table, inv_spker_table
+
+    def __init_model(self, n_spkers):
+        model = nn.DataParallel(FastSpeech2(n_spkers=n_spkers))
+        num_param = utils.get_param_num(model)
+        print(f"[INFO] Number of FastSpeech2 Parameters: {num_param:,}")
+
+        return model
+
+    def __init_optimizer(self, restore_step):
+        optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            betas=hp.betas,
+            eps=hp.eps,
+            weight_decay=hp.weight_decay,
+        )
+        scheduled_optim = ScheduledOptim(
+            optimizer, hp.decoder_hidden, hp.n_warm_up_step, restore_step
+        )
+        return optimizer, scheduled_optim
+
+    def __init_logger(self):
+        train_log_path = self.paths["log_path"] / "train"
+        eval_log_path = self.paths["log_path"] / "eval"
+        utils.make_paths([train_log_path, eval_log_path])
+
+        train_logger = SummaryWriter(train_log_path)
+        eval_logger = SummaryWriter(eval_log_path)
+        return train_logger, eval_logger
+
+    def __log(
+        self, mode, total_loss, mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss
+    ):
+        total_loss = total_loss.item()
+        mel_loss = mel_loss.item()
+        mel_postnet_loss = mel_postnet_loss.item()
+        d_loss = d_loss.item()
+        f_loss = f_loss.item()
+        e_loss = e_loss.item()
+
+        utils.simple_table(
+            [
+                ("Mode", mode),
+                ("Time", datetime.today().strftime("%Y-%m-%d-%H:%M")),
+                ("Step", f"{self.train_step}"),
+                ("Total Loss", f"{total_loss:.4f}"),
+                ("Mel Loss", f"{mel_loss:.4f}"),
+                ("Mel PostNet Loss", f"{mel_postnet_loss:.4f}"),
+                ("Duration Loss", f"{d_loss:.4f}"),
+                ("F0 Loss", f"{f_loss:.4f}"),
+                ("Energy Loss", f"{e_loss:.4f}"),
+            ]
+        )
+
+        if mode == "train":
+            logger = self.train_logger
+        elif mode == "eval":
+            logger = self.eval_logger
+
+        logger.add_scalar("Loss/total_loss", total_loss, self.train_step)
+        logger.add_scalar("Loss/mel_loss", mel_loss, self.train_step)
+        logger.add_scalar("Loss/mel_postnet_loss", mel_postnet_loss, self.train_step)
+        logger.add_scalar("Loss/d_loss", d_loss, self.train_step)
+        logger.add_scalar("Loss/f_loss", f_loss, self.train_step)
+        logger.add_scalar("Loss/e_loss", e_loss, self.train_step)
+
+    def __synth(
+        self, mel: torch.Tensor, mel_lens: torch.Tensor, data_ids, save_dir: Path
+    ):
+        # mel.shape : (batch, time, mel_dim)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        wav_lens = [m * self.vocoder.hop_length for m in mel_lens]
+        wav = self.vocoder.mel2wav(mel.transpose(1, 2))
+        utils.save_audios(wav, wav_lens, data_ids, save_dir)
+
+    def __eval_and_synth(self):
+        self.model.eval()
+        print(f"[Evaluation] Evaluating at step {str(self.train_step)}")
+        batch_num = 0
+        gt_synth_path = self.paths["synth_path"] / "gt"
+        pred_synth_path = self.paths["synth_path"] / str(self.train_step)
+
+        synth_gt = True if not gt_synth_path.exists() else False
+        # total_loss, mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss
+        L = (0, 0, 0, 0, 0, 0)
+        for batches in tqdm(self.valid_loader):
+            for batch in batches:
+                model_batch, gt_batch = utils.data_to_device(batch, self.device)
+                with torch.no_grad():
+                    # forward
+                    (model_pred, text_mask, mel_mask, mel_lens) = self.model(
+                        *model_batch
+                    )
+                    # cal loss
+                    mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss = self.loss(
+                        *model_pred, *gt_batch, ~text_mask, ~mel_mask,
+                    )
+
+                    total_loss = mel_loss + mel_postnet_loss + d_loss + f_loss + e_loss
+
+                    l = (total_loss, mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss)
+
+                    # accumulate loss
+                    L = tuple(a + b for a, b in zip(L, l))
+
+                # synthesize ground truth mel spectrogram
+                if synth_gt:
+                    self.__synth(
+                        mel=gt_batch[-1],
+                        mel_lens=mel_lens,
+                        data_ids=batch["data_id"],
+                        save_dir=gt_synth_path,
+                    )
+
+                # synthesize predicted mel spectrogram
+                self.__synth(
+                    mel=model_pred[1],
+                    mel_lens=mel_lens,
+                    data_ids=batch["data_id"],
+                    save_dir=pred_synth_path,
+                )
+
+                # plot ground truth and predicted mel spectrogram
+                utils.plot_mel(
+                    mel_gt=gt_batch[-1],
+                    mel_pred=model_pred[1],
+                    data_ids=batch["data_id"],
+                    save_dir=pred_synth_path,
+                )
+
+                batch_num += 1
+        # log
+        L = (l / batch_num for l in L)
+        self.__log("eval", *L)
+        self.model.train()
+
+        # synth info
+        if synth_gt:
+            print(
+                f"[Evaluation] {len(os.listdir(gt_synth_path))} files were saved in {gt_synth_path}"
+            )
+        print(
+            f"[Evaluation] {len(os.listdir(pred_synth_path))} files were saved in {pred_synth_path}"
+        )
+
+    def __load_model(self, checkpoint_path, restore_step):
+        checkpoint = torch.load(checkpoint_path / f"checkpoint_{restore_step}.pth.tar")
+        self.model.load_state_dict(checkpoint["model"])
+        self.optimizer.load_state_dict(checkpoint["optimizer"])
+        print("\n---Model Restored at Step {}---\n".format(restore_step))
+
+    def __save_model_and_optimizer(self):
+        save_path = (
+            self.paths["checkpoint_path"] / f"checkpoint_{self.train_step}.pth.tar"
+        )
+        if not save_path.exists():
+            torch.save(
+                {
+                    "model": self.model.state_dict(),
+                    "optimizer": self.optimizer.state_dict(),
+                },
+                save_path,
+            )
+            print(f"[Training] Model saved at step {self.train_step}")
+
+
 def main(args):
+    date_time = datetime.today().strftime("%Y-%m-%d-%H:%M")
+    record_idx = f"{hp.dataset}_{date_time}"
+    paths = {}
+    paths["data_dir"] = Path(args.data_dir).resolve()
+    record_root = Path(args.record_dir).resolve()
+    paths["checkpoint_path"] = Path(record_root / record_idx / "ckpt").resolve()
+    paths["synth_path"] = Path(record_root / record_idx / "synth").resolve()
+    paths["log_path"] = Path(record_root / record_idx / "log").resolve()
+    record_file_path = Path(record_root / "comments.txt").resolve()
+
+    utils.make_paths(list(paths.values()))
+    utils.add_comment(record_file_path, record_idx, args.comment)
+
+    # === training === #
     torch.manual_seed(0)
-    # Get device
-    device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
-    
-    # Get dataset
-    dataset = Dataset("train.txt") 
-    loader = DataLoader(dataset, batch_size=hp.batch_size**2, shuffle=True, 
-        collate_fn=dataset.collate_fn, drop_last=True, num_workers=0)
-    
-    # Define model
-    if hp.use_spk_embed:
-        n_pkers = len(dataset.spk_table.keys())
-        model = nn.DataParallel(FastSpeech2(n_spkers=n_pkers)).to(device)
-    else:
-        model = nn.DataParallel(FastSpeech2()).to(device)
-        
-    print("Model Has Been Defined")
-    num_param = utils.get_param_num(model)
-    print('Number of FastSpeech2 Parameters:', num_param)
+    trainer = Trainer(paths, restore_step=args.restore_step)
+    trainer.train()
 
-    # Optimizer and loss
-    optimizer = torch.optim.Adam(model.parameters(), betas=hp.betas, eps=hp.eps, weight_decay = hp.weight_decay)
-    scheduled_optim = ScheduledOptim(optimizer, hp.decoder_hidden, hp.n_warm_up_step, args.restore_step)
-    Loss = FastSpeech2Loss().to(device) 
-    print("Optimizer and Loss Function Defined.")
-
-    # Load checkpoint if exists
-    checkpoint_path = os.path.join(hp.checkpoint_path)
-    try:
-        checkpoint = torch.load(os.path.join(
-            checkpoint_path, 'checkpoint_{}.pth.tar'.format(args.restore_step)))
-        model.load_state_dict(checkpoint['model'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        print("\n---Model Restored at Step {}---\n".format(args.restore_step))
-    except:
-        print("\n---Start New Training---\n")
-        if not os.path.exists(checkpoint_path):
-            os.makedirs(checkpoint_path)
-
-    # Load vocoder
-    if hp.vocoder == 'melgan':
-        melgan = utils.get_melgan()
-        #melgan.to(device)
-    elif hp.vocoder == 'waveglow':
-        waveglow = utils.get_waveglow()
-        waveglow.to(device)
-
-    # Init logger
-    log_path = hp.log_path
-    if not os.path.exists(log_path):
-        os.makedirs(log_path)
-        os.makedirs(os.path.join(log_path, 'train'))
-        os.makedirs(os.path.join(log_path, 'validation'))
-    train_logger = SummaryWriter(os.path.join(log_path, 'train'))
-    val_logger = SummaryWriter(os.path.join(log_path, 'validation'))
-
-    # Init synthesis directory
-    synth_path = hp.synth_path
-    if not os.path.exists(synth_path):
-        os.makedirs(synth_path)
-    
-    # Init evaluation directory
-    eval_path = hp.eval_path
-    if not os.path.exists(eval_path):
-        os.makedirs(eval_path)
-
-    # Define Some Information
-    Time = np.array([])
-    Start = time.perf_counter()
-    
-    # Training
-    model = model.train()
-    for epoch in range(hp.epochs):
-        # Get Training Loader
-        total_step = hp.epochs * len(loader) * hp.batch_size
-
-        for i, batchs in enumerate(loader):
-            for j, data_of_batch in enumerate(batchs):
-                start_time = time.perf_counter()
-
-                current_step = i*hp.batch_size + j + args.restore_step + epoch*len(loader)*hp.batch_size + 1
-                print("step : {}".format(current_step), end='\r', flush=True)
-                
-                
-                ### Get Data ###
-                if hp.use_spk_embed:
-                    spk_ids = torch.tensor(data_of_batch["spk_ids"]).to(torch.int64).to(device)
-                else:
-                    spk_ids = None
-                text = torch.from_numpy(data_of_batch["text"]).long().to(device)
-                mel_target = torch.from_numpy(data_of_batch["mel_target"]).float().to(device)
-                D = torch.from_numpy(data_of_batch["D"]).long().to(device)
-                log_D = torch.from_numpy(data_of_batch["log_D"]).float().to(device)
-                f0 = torch.from_numpy(data_of_batch["f0"]).float().to(device)
-                energy = torch.from_numpy(data_of_batch["energy"]).float().to(device)
-                src_len = torch.from_numpy(data_of_batch["src_len"]).long().to(device)
-                mel_len = torch.from_numpy(data_of_batch["mel_len"]).long().to(device)
-                max_src_len = np.max(data_of_batch["src_len"]).astype(np.int32)
-                max_mel_len = np.max(data_of_batch["mel_len"]).astype(np.int32)
-                
-                ### Forward ###
-                mel_output, mel_postnet_output, log_duration_output, f0_output, energy_output, src_mask, mel_mask, _ = model(
-                    text, src_len, mel_len, D, f0, energy, max_src_len, max_mel_len, spk_ids)
-                
-                ### Cal Loss ###
-                mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss = Loss(
-                        log_duration_output, log_D, f0_output, f0, energy_output, energy, mel_output, mel_postnet_output, mel_target, ~src_mask, ~mel_mask)
-                total_loss = mel_loss + mel_postnet_loss + d_loss + 0.01*f_loss + 0.1*e_loss
-
-                t_l = total_loss.item()
-                m_l = mel_loss.item()
-                m_p_l = mel_postnet_loss.item()
-                d_l = d_loss.item()
-                f_l = f_loss.item()
-                e_l = e_loss.item()
-                with open(os.path.join(log_path, "total_loss.txt"), "a") as f_total_loss:
-                    f_total_loss.write(str(t_l)+"\n")
-                with open(os.path.join(log_path, "mel_loss.txt"), "a") as f_mel_loss:
-                    f_mel_loss.write(str(m_l)+"\n")
-                with open(os.path.join(log_path, "mel_postnet_loss.txt"), "a") as f_mel_postnet_loss:
-                    f_mel_postnet_loss.write(str(m_p_l)+"\n")
-                with open(os.path.join(log_path, "duration_loss.txt"), "a") as f_d_loss:
-                    f_d_loss.write(str(d_l)+"\n")
-                with open(os.path.join(log_path, "f0_loss.txt"), "a") as f_f_loss:
-                    f_f_loss.write(str(f_l)+"\n")
-                with open(os.path.join(log_path, "energy_loss.txt"), "a") as f_e_loss:
-                    f_e_loss.write(str(e_l)+"\n")
-                 
-                ## Backward
-                total_loss = total_loss / hp.acc_steps
-                total_loss.backward()
-                if current_step % hp.acc_steps != 0:
-                    continue
-
-                ### Update weights ###
-                nn.utils.clip_grad_norm_(model.parameters(), hp.grad_clip_thresh)
-                scheduled_optim.step_and_update_lr()
-                scheduled_optim.zero_grad()
-                
-                ### Print ###
-                if current_step % hp.log_step == 0:
-                    Now = time.perf_counter()
-
-                    str1 = "Epoch [{}/{}], Step [{}/{}]:".format(
-                        epoch+1, hp.epochs, current_step, total_step)
-                    str2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Duration Loss: {:.4f}, F0 Loss: {:.4f}, Energy Loss: {:.4f};".format(
-                        t_l, m_l, m_p_l, d_l, f_l, e_l)
-                    str3 = "Time Used: {:.3f}s, Estimated Time Remaining: {:.3f}s.".format(
-                        (Now-Start), (total_step-current_step)*np.mean(Time))
-
-                    print("\n" + str1)
-                    print(str2)
-                    print(str3)
-                    
-                    with open(os.path.join(log_path, "log.txt"), "a") as f_log:
-                        f_log.write(str1 + "\n")
-                        f_log.write(str2 + "\n")
-                        f_log.write(str3 + "\n")
-                        f_log.write("\n")
-
-                    train_logger.add_scalar('Loss/total_loss', t_l, current_step)
-                    train_logger.add_scalar('Loss/mel_loss', m_l, current_step)
-                    train_logger.add_scalar('Loss/mel_postnet_loss', m_p_l, current_step)
-                    train_logger.add_scalar('Loss/duration_loss', d_l, current_step)
-                    train_logger.add_scalar('Loss/F0_loss', f_l, current_step)
-                    train_logger.add_scalar('Loss/energy_loss', e_l, current_step)
-                
-                ### Save model ###
-                if current_step % hp.save_step == 0:
-                    torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(
-                    )}, os.path.join(checkpoint_path, 'checkpoint_{}.pth.tar'.format(current_step)))
-                    print("save model at step {} ...".format(current_step))
-                
-                ### Synth ###
-                if current_step % hp.synth_step == 0:
-                    length = mel_len[0].item()
-                    print("step: {} , length {}, {}".format(current_step, length, mel_len))
-                    mel_target_torch = mel_target[0, :length].detach().unsqueeze(0).transpose(1, 2)
-                    mel_target = mel_target[0, :length].detach().cpu().transpose(0, 1)
-                    mel_torch = mel_output[0, :length].detach().unsqueeze(0).transpose(1, 2)
-                    mel = mel_output[0, :length].detach().cpu().transpose(0, 1)
-                    mel_postnet_torch = mel_postnet_output[0, :length].detach().unsqueeze(0).transpose(1, 2)
-                    mel_postnet = mel_postnet_output[0, :length].detach().cpu().transpose(0, 1)
-                    
-                    spk_id = dataset.inv_spk_table[int(spk_ids[0])]
-                    if hp.vocoder == 'melgan':
-                        vocoder.melgan_infer(mel_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                        vocoder.melgan_infer(mel_postnet_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_postnet_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                        vocoder.melgan_infer(mel_target_torch, melgan, os.path.join(hp.synth_path, 'step_{}_spk_{}_ground-truth_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                    
-                    elif hp.vocoder == 'waveglow':
-                        vocoder.waveglow_infer(mel_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_{}.wav'.format(current_step, hp.vocoder)))
-                        vocoder.waveglow_infer(mel_postnet_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_postnet_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                        vocoder.waveglow_infer(mel_target_torch, waveglow, os.path.join(hp.synth_path, 'step_{}_spk_{}_ground-truth_{}.wav'.format(current_step, spk_id, hp.vocoder)))
-                    
-                    f0 = f0[0, :length].detach().cpu().numpy()
-                    energy = energy[0, :length].detach().cpu().numpy()
-                    f0_output = f0_output[0, :length].detach().cpu().numpy()
-                    energy_output = energy_output[0, :length].detach().cpu().numpy()
-                    
-                    utils.plot_data([(mel_postnet.numpy(), f0_output, energy_output), (mel_target.numpy(), f0, energy)], 
-                        ['Synthetized Spectrogram', 'Ground-Truth Spectrogram'], filename=os.path.join(synth_path, 'step_{}.png'.format(current_step)))
-                
-                ### Evaluation ###
-                if current_step % hp.eval_step == 0:
-                    model.eval()
-                    with torch.no_grad():
-                        d_l, f_l, e_l, m_l, m_p_l = evaluate(model, current_step)
-                        t_l = d_l + f_l + e_l + m_l + m_p_l
-                        
-                        val_logger.add_scalar('Loss/total_loss', t_l, current_step)
-                        val_logger.add_scalar('Loss/mel_loss', m_l, current_step)
-                        val_logger.add_scalar('Loss/mel_postnet_loss', m_p_l, current_step)
-                        val_logger.add_scalar('Loss/duration_loss', d_l, current_step)
-                        val_logger.add_scalar('Loss/F0_loss', f_l, current_step)
-                        val_logger.add_scalar('Loss/energy_loss', e_l, current_step)
-
-                    model.train()
-
-                ### Time ###
-                end_time = time.perf_counter()
-                Time = np.append(Time, end_time - start_time)
-                if len(Time) == hp.clear_Time:
-                    temp_value = np.mean(Time)
-                    Time = np.delete(
-                        Time, [i for i in range(len(Time))], axis=None)
-                    Time = np.append(Time, temp_value)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--restore_step', type=int, default=0)
-    
+    parser.add_argument("data_dir", type=str)
+    parser.add_argument("--record_dir", type=str, default="./records")
+    parser.add_argument("--comment", type=str, default="None")
+    parser.add_argument("--restore_step", type=int, default=0)
     args = parser.parse_args()
     main(args)

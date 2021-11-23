@@ -2,7 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+temp/
+processed/
+records/
+test.ipynb
+*.wav
 # C extensions
 *.so
 

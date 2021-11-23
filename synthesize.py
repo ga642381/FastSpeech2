@@ -1,162 +1,100 @@
+import argparse
+import os
+import random
+import re
+from pathlib import Path
+from string import punctuation
+
+import numpy as np
+import soundfile
 import torch
 import torch.nn as nn
-import numpy as np
-import os
-import argparse
-import re
-import random
-from string import punctuation
 from g2p_en import G2p
 
-from fastspeech2 import FastSpeech2
-from text import text_to_sequence, sequence_to_text
-import hparams as hp
-import utils
 import audio as Audio
+import utils
+from audio.wavmel import Vocoder
+from config import hparams as hp
+from model.fastspeech2 import FastSpeech2
+from text import clean_text, sequence_to_text, text_to_sequence
 from utils import get_mask_from_lengths
-import soundfile
+from utils.pad import pad_1D
 
 
+class Synthesizer:
+    def __init__(self, args):
+        self.ckpt_path = Path(args.ckpt_path).resolve()
+        self.output_dir = Path(args.output_dir).resolve()
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.tts_model = self.__init_tts(self.ckpt_path)
+        self.vocoder = self.__init_vocoder("melgan")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.g2p = G2p()
+        pass
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-if hp.use_spk_embed:
-    if hp.dataset == "VCTK":
-        from data import vctk
-        spk_table, inv_spk_table = vctk.get_spk_table()
-        
-    if hp.dataset == "LibriTTS":
-        from data import libritts
-        spk_table, inv_spk_table = libritts.get_spk_table()
+    def __init_tts(self, ckpt_path):
+        state = torch.load(ckpt_path)
+        n_spkers = state["model"]["module.spker_embeds.weight"].shape[0]
+        model = nn.DataParallel(FastSpeech2(n_spkers))
+        model.load_state_dict(state["model"])
+        model.requires_grad_ = False
+        model.eval()
+        return model
 
-def preprocess(text):        
-    text = text.rstrip(punctuation)
+    def __init_vocoder(self, name="melgan"):
+        return Vocoder(name)
 
-    g2p = G2p()
-    phone = g2p(text)
-    phone = list(filter(lambda p: p != ' ', phone))
-    phone = '{'+ '}{'.join(phone) + '}'
-    phone = re.sub(r'\{[^\w\s]?\}', '{sp}', phone)
-    phone = phone.replace('}{', ' ')
-    print(text)
-    print('|' + phone + '|')
-    print("\n")
-    #print(text_to_sequence(phone, hp.text_cleaners))
-    sequence = np.array(text_to_sequence(phone, hp.text_cleaners))
-    sequence = np.stack([sequence])
+    def __process_text(self, text):
+        text_cleaned = clean_text(text, hp.text_cleaners)
+        phone = self.g2p(text_cleaned)
+        phone = [p for p in phone if p != " "]
+        phone = "{" + "}{".join(phone) + "}"
+        phone = re.sub(r"\{[^\w\s]?\}", "{sp}", phone)
+        phone = phone.replace("}{", " ")
+        text = text_to_sequence(phone, hp.text_cleaners)
+        return text
 
-    return torch.from_numpy(sequence).long().to(device)
-
-def get_FastSpeech2(num):
-    checkpoint_path = os.path.join(hp.checkpoint_path, "checkpoint_{}.pth.tar".format(num))
-    n_spkers = torch.load(checkpoint_path)['model']['module.embed_speakers.weight'].shape[0]
-    
-    if hp.use_spk_embed:    
-        model = nn.DataParallel(FastSpeech2(True, n_spkers))
-    else:
-        model = nn.DataParallel(FastSpeech2())
-        
-    model.load_state_dict(torch.load(checkpoint_path)['model'])
-    model.requires_grad = False
-    model.eval()
-    return model
-
-def synthesize(model, waveglow, melgan, text, sentence, prefix=''):
-    sentence = sentence[:150] # long filename will result in OS Error
-    src_len = torch.from_numpy(np.array([text.shape[1]])).to(device)
-    
-    # create dir
-    if not os.path.exists(os.path.join(hp.test_path, hp.dataset)):
-        os.makedirs(os.path.join(hp.test_path, hp.dataset))    
-    
-    # generate wav
-    if hp.use_spk_embed:
-        hp.batch_size = 3
-        # select speakers
-        # TODO
-        spk_ids = torch.tensor(list(inv_spk_table.keys())[5:5+hp.batch_size]).to(torch.int64).to(device)
-        text = text.repeat(hp.batch_size, 1)
-        src_len = src_len.repeat(hp.batch_size)
-        mel, mel_postnet, log_duration_output, f0_output, energy_output, _, _, mel_len = model(text, src_len, speaker_ids=spk_ids)
-        
-        mel_mask = get_mask_from_lengths(mel_len, None)
-        mel_mask = mel_mask.unsqueeze(-1).expand(mel_postnet.size())
-        silence = (torch.ones(mel_postnet.size()) * -5).to(device)
-        mel = torch.where(~mel_mask, mel, silence)
-        mel_postnet = torch.where(~mel_mask, mel_postnet, silence)
-        
-        mel_torch = mel.transpose(1, 2).detach()
-        mel_postnet_torch = mel_postnet.transpose(1, 2).detach()
-
-        if waveglow is not None:
-            wavs = utils.waveglow_infer_batch(mel_postnet_torch, waveglow)
-        if melgan is not None:
-            wavs = utils.melgan_infer_batch(mel_postnet_torch, melgan)        
-            
-        for i, spk_id in enumerate(spk_ids):
-            spker = inv_spk_table[int(spk_id)]
-            mel_postnet_i = mel_postnet[i].cpu().transpose(0, 1).detach()
-            f0_i = f0_output[i].detach().cpu().numpy()
-            energy_i = energy_output[i].detach().cpu().numpy()
-            mel_mask_i = mel_mask[i]
-            wav_i = wavs[i]
-            
-            # output
-            base_dir_i = os.path.join(hp.test_path, hp.dataset, "step {}".format(args.step), spker)
-            os.makedirs(base_dir_i, exist_ok=True)
-            path_i = os.path.join(base_dir_i, '{}_{}_{}.wav'.format(prefix, hp.vocoder, sentence))
-            soundfile.write(path_i, wav_i, hp.sampling_rate)
-            utils.plot_data([(mel_postnet_i.numpy(), f0_i, energy_i)], 
-                            ['Synthesized Spectrogram'], 
-                            filename=os.path.join(base_dir_i, '{}_{}.png'.format(prefix, sentence)))
-            
-    else:
-        spk_ids = None
-        mel, mel_postnet, log_duration_output, f0_output, energy_output, _, _, mel_len = model(text, src_len, speaker_ids=spk_ids)
-        mel_torch = mel.transpose(1, 2).detach()
-        mel_postnet_torch = mel_postnet.transpose(1, 2).detach()
-        mel = mel[0].cpu().transpose(0, 1).detach()
-        mel_postnet = mel_postnet[0].cpu().transpose(0, 1).detach()
-        f0_output = f0_output[0].detach().cpu().numpy()
-        energy_output = energy_output[0].detach().cpu().numpy()
-        
-        Audio.tools.inv_mel_spec(mel_postnet, os.path.join(hp.test_path, '{}_griffin_lim_{}.wav'.format(prefix, sentence)))
-        if waveglow is not None:
-            utils.waveglow_infer(mel_postnet_torch, waveglow, os.path.join(hp.test_path, hp.dataset, '{}_{}_{}_{}.wav'.format(prefix, hp.vocoder, spker, sentence)))
-        if melgan is not None:
-            utils.melgan_infer(mel_postnet_torch, melgan, os.path.join(hp.test_path, hp.dataset, '{}_{}_{}_{}.wav'.format(prefix, hp.vocoder, spker, sentence)))
-        
-        utils.plot_data([(mel_postnet.numpy(), f0_output, energy_output)], ['Synthesized Spectrogram'], filename=os.path.join(hp.test_path, '{}_{}.png'.format(prefix, sentence)))
+    def synthesize(self, texts: list):
+        texts = [self.__process_text(text) for text in texts]
+        texts = [np.array(text) for text in texts]
+        text_lens = np.array([text.shape[0] for text in texts])
+        text_lens = torch.from_numpy(text_lens).long().to(self.device)
+        texts = pad_1D(texts)
+        texts = torch.from_numpy(texts).long().to(self.device)
+        spker_id = torch.tensor([0]).to(self.device)
+        with torch.no_grad():
+            (model_pred, text_mask, mel_mask, mel_lens) = self.tts_model(
+                spker_id, texts, text_lens
+            )
+            wavs = self.vocoder.mel2wav(model_pred[1].transpose(1, 2))
+            output_names = list(range(len(wavs)))
+            output_names = [str(o) for o in output_names]  # [0, 1,2,3,4]
+            wav_lens = [m * self.vocoder.hop_length for m in mel_lens]
+            utils.save_audios(
+                wavs,
+                wav_lens=wav_lens,
+                data_ids=output_names,
+                save_dir=self.output_dir,
+            )
 
 
 if __name__ == "__main__":
-    # Test
+    """
+    e.g. python synthesize.py --ckpt_path ./records/LJSpeech_2021-11-22-22:42/ckpt/checkpoint_125000.pth.tar --output_dir ./output
+    """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--step', type=int, default=600000)
-    parser.add_argument('--input', action="store_true", default=False)
+    parser.add_argument("--ckpt_path", type=str)
+    parser.add_argument("--output_dir", type=str, default="./output")
+    parser.add_argument("--vocoder", type=str, default="melgan")
     args = parser.parse_args()
-    
-    if args.input:
-        sentence = input("Please enter an English sentence : ")
-        sentences = [sentence]
-        
-    else:
-        sentences = ["Weather forecast for tonight: dark.",
-                     "I put a dollar in a change machine. Nothing changed.",
-                     "“No comment” is a comment.",
-                     "So far, this is the oldest I’ve been.",
-                     "I am in shape. Round is a shape."
-                ]
-        
-    model = get_FastSpeech2(args.step).to(device)
-    melgan = waveglow = None
-    if hp.vocoder == 'melgan':
-        melgan = utils.get_melgan()
-        
-    elif hp.vocoder == 'waveglow':
-        waveglow = utils.get_waveglow()
-        waveglow.to(device)
-        
-    print("Synthesizing...")
-    for sentence in sentences:
-        text = preprocess(sentence)
-        synthesize(model, waveglow, melgan, text, sentence, prefix='step_{}'.format(args.step))
+
+    sentences = [
+        "Weather forecast for tonight: dark.",
+        "I put a dollar in a change machine. Nothing changed.",
+        "“No comment” is a comment.",
+        "So far, this is the oldest I’ve been.",
+        "I am in shape. Round is a shape.",
+    ]
+
+    tts = Synthesizer(args)
+    tts.synthesize(sentences)
