@@ -1,11 +1,11 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
+from config import hparams as hp
+from text.symbols import symbols
 
 import transformer.Constants as Constants
 from transformer.Layers import FFTBlock
-from text.symbols import symbols
-from config import hparams as hp
 
 
 def get_sinusoid_encoding_table(n_position, d_hid, padding_idx=None):

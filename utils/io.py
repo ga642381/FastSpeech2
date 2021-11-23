@@ -55,6 +55,7 @@ def plot_mel(mel_gt, mel_pred, data_ids: list, save_dir: Path):
 
         fig.clear()
         plt.close(fig)
+        plt.close("all")
 
 
 # === stdio === #

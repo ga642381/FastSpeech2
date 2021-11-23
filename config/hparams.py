@@ -1,6 +1,6 @@
 import yaml
 
-dataset = "LJSpeech"  # [LibriTTS, VCTK, LJSpeech]
+dataset = "LibriTTS"  # [LibriTTS, VCTK, LJSpeech]
 mfa_path = "./MFA"
 
 ### Text ###
@@ -57,7 +57,7 @@ spk_embed_dim = 256
 spk_embed_weight_std = 0.01
 
 ### Optimizer ###
-batch_size = 16
+batch_size = 32
 n_warm_up_step = 4000
 grad_clip_thresh = 1.0
 acc_steps = 1
@@ -75,6 +75,6 @@ vocoder = "melgan"
 log_offset = 1.0
 
 # Save, log and synthesis
-save_step = 25000
+save_step = 10000
 eval_step = save_step
 log_step = 1000

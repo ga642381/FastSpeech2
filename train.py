@@ -57,7 +57,9 @@ class Trainer:
                     model_batch, gt_batch = utils.data_to_device(batch, self.device)
 
                     # === 2. Forward === #
-                    (model_pred, text_mask, mel_mask, _) = self.model(*model_batch)
+                    (model_pred, text_mask, mel_mask, mel_lens) = self.model(
+                        *model_batch
+                    )
 
                     # === 3. Cal Loss ===#
                     mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss = self.loss(
@@ -90,7 +92,26 @@ class Trainer:
                     if self.train_step % hp.eval_step == 0:
                         self.__eval_and_synth()
 
-                    # === 7. Save === #
+                    # === 6.5 Synth Training === #
+                    # For debugging
+                    # pred_synth_path = self.paths["synth_path"] / (
+                    #     "train" + str(self.train_step)
+                    # )
+                    # if self.train_step % hp.eval_step == 0:
+                    #     self.__synth(
+                    #         mel=model_pred[1].detach(),
+                    #         mel_lens=mel_lens,
+                    #         data_ids=batch["data_id"],
+                    #         save_dir=pred_synth_path,
+                    #     )
+                    #     # plot ground truth and predicted mel spectrogram
+                    #     utils.plot_mel(
+                    #         mel_gt=gt_batch[-1].detach(),
+                    #         mel_pred=model_pred[1].detach(),
+                    #         data_ids=batch["data_id"],
+                    #         save_dir=pred_synth_path,
+                    #     )
+                    # # === 7. Save === #
                     if self.train_step % hp.save_step == 0:
                         self.__save_model_and_optimizer()
 
@@ -208,7 +229,7 @@ class Trainer:
                 model_batch, gt_batch = utils.data_to_device(batch, self.device)
                 with torch.no_grad():
                     # forward
-                    (model_pred, text_mask, mel_mask, mel_len) = self.model(
+                    (model_pred, text_mask, mel_mask, mel_lens) = self.model(
                         *model_batch
                     )
                     # cal loss
@@ -227,7 +248,7 @@ class Trainer:
                 if synth_gt:
                     self.__synth(
                         mel=gt_batch[-1],
-                        mel_lens=mel_len,
+                        mel_lens=mel_lens,
                         data_ids=batch["data_id"],
                         save_dir=gt_synth_path,
                     )
@@ -235,7 +256,7 @@ class Trainer:
                 # synthesize predicted mel spectrogram
                 self.__synth(
                     mel=model_pred[1],
-                    mel_lens=mel_len,
+                    mel_lens=mel_lens,
                     data_ids=batch["data_id"],
                     save_dir=pred_synth_path,
                 )
@@ -248,7 +269,6 @@ class Trainer:
                 )
 
                 batch_num += 1
-
         # log
         L = (l / batch_num for l in L)
         self.__log("eval", *L)

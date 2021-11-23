@@ -1,6 +1,6 @@
-from config import hparams as hp
 import torch
 import torch.nn as nn
+from config import hparams as hp
 from transformer.Layers import PostNet
 from transformer.Models import Decoder, Encoder
 from utils.mask import get_mask_from_lengths

@@ -6,6 +6,7 @@ temp/
 processed/
 records/
 test.ipynb
+*.wav
 # C extensions
 *.so
 

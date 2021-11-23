@@ -10,7 +10,7 @@ import tgt
 from audio.feature import Energy, get_f0_from_wav, get_feature_from_wav
 from audio.wavmel import Vocoder
 from config import hparams as hp
-from text import _clean_text
+from text import clean_text
 from tqdm import tqdm
 from utils.alignment import get_alignment, get_textgird_contents
 
@@ -68,7 +68,7 @@ def prepare_mfa(wav_dir: Path, txt_dir: Path, mfa_data_dir: Path):
             with open(txt_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
                 assert len(lines) == 1
-                text = _clean_text(lines[0], hp.text_cleaners)
+                text = clean_text(lines[0], hp.text_cleaners)
             # make whether two or single suffixes ".txt"
             with open(
                 target_dir / txt_file.with_suffix("").with_suffix(".txt").name,
