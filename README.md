@@ -13,6 +13,9 @@
 ## Datasets :elephant:
 This project supports 2 muti-speaker datasets:
 
+### :fire: Single-Speaker
+- **LJSpeech**
+
 ### :fire: Multi-Speaker
 - **LibriTTS**
 
