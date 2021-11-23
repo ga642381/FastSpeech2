@@ -23,8 +23,10 @@ from utils.pad import pad_1D
 
 class Synthesizer:
     def __init__(self, args):
-        ckpt_path = Path(args.ckpt_path).resolve()
-        self.tts_model = self.__init_tts(ckpt_path)
+        self.ckpt_path = Path(args.ckpt_path).resolve()
+        self.output_dir = Path(args.output_dir).resolve()
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.tts_model = self.__init_tts(self.ckpt_path)
         self.vocoder = self.__init_vocoder("melgan")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.g2p = G2p()
@@ -65,20 +67,24 @@ class Synthesizer:
                 spker_id, texts, text_lens
             )
             wavs = self.vocoder.mel2wav(model_pred[1].transpose(1, 2))
+            output_names = list(range(len(wavs)))
+            output_names = [str(o) for o in output_names]  # [0, 1,2,3,4]
             wav_lens = [m * self.vocoder.hop_length for m in mel_lens]
             utils.save_audios(
                 wavs,
                 wav_lens=wav_lens,
-                data_ids=["test1", "test2", "test3", "test4", "test5"],
-                save_dir=Path("./"),
+                data_ids=output_names,
+                save_dir=self.output_dir,
             )
 
 
 if __name__ == "__main__":
-    model_path = "/fortress/tts2021/FastSpeech2/records/LJSpeech_2021-11-22-22:42/ckpt/checkpoint_125000.pth.tar"
+    """
+    e.g. python synthesize.py --ckpt_path ./records/LJSpeech_2021-11-22-22:42/ckpt/checkpoint_125000.pth.tar --output_dir ./output
+    """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt_path", type=str, default=model_path)
-    parser.add_argument("--output_path", type=str, default="./")
+    parser.add_argument("--ckpt_path", type=str)
+    parser.add_argument("--output_dir", type=str, default="./output")
     parser.add_argument("--vocoder", type=str, default="melgan")
     args = parser.parse_args()
 

@@ -1,10 +1,14 @@
 from pathlib import Path
 
+import matplotlib
+import soundfile
 import torch
 import torchaudio
 from config import hparams as hp
 from matplotlib import pyplot as plt
 
+# make use to use "Agg", otherwised memory leakage will occur!!
+matplotlib.use("Agg")
 
 # === dirs === #
 def make_paths(paths: list):
@@ -27,6 +31,7 @@ def save_audios(
     for wav, file_name in zip(wavs, data_ids):
         save_path = save_dir / (file_name + ".wav")
         torchaudio.save(save_path, wav.unsqueeze(0), hp.sampling_rate)
+        # soundfile.write(save_path, wav.numpy(), hp.sampling_rate)
         saved_num += 1
     return saved_num
 
@@ -52,7 +57,6 @@ def plot_mel(mel_gt, mel_pred, data_ids: list, save_dir: Path):
         axes[1][0].imshow(mel2, origin="lower")
 
         fig.savefig(save_path)
-
         fig.clear()
         plt.close(fig)
         plt.close("all")

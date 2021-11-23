@@ -92,25 +92,6 @@ class Trainer:
                     if self.train_step % hp.eval_step == 0:
                         self.__eval_and_synth()
 
-                    # === 6.5 Synth Training === #
-                    # For debugging
-                    # pred_synth_path = self.paths["synth_path"] / (
-                    #     "train" + str(self.train_step)
-                    # )
-                    # if self.train_step % hp.eval_step == 0:
-                    #     self.__synth(
-                    #         mel=model_pred[1].detach(),
-                    #         mel_lens=mel_lens,
-                    #         data_ids=batch["data_id"],
-                    #         save_dir=pred_synth_path,
-                    #     )
-                    #     # plot ground truth and predicted mel spectrogram
-                    #     utils.plot_mel(
-                    #         mel_gt=gt_batch[-1].detach(),
-                    #         mel_pred=model_pred[1].detach(),
-                    #         data_ids=batch["data_id"],
-                    #         save_dir=pred_synth_path,
-                    #     )
                     # # === 7. Save === #
                     if self.train_step % hp.save_step == 0:
                         self.__save_model_and_optimizer()
@@ -260,6 +241,7 @@ class Trainer:
                     data_ids=batch["data_id"],
                     save_dir=pred_synth_path,
                 )
+
                 # plot ground truth and predicted mel spectrogram
                 utils.plot_mel(
                     mel_gt=gt_batch[-1],
