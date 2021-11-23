@@ -1,11 +1,3 @@
-<p>
-  <h3 align="center">
-  Multi-Speaker FastSpeech 2 - PyTorch
-  </h3>
-</p>
-
-</br>
-
 ## Multi-speaker FastSpeech 2 - PyTorch Implementation :zap:
 
 * This is a PyTorch implementation of Microsoft's [FastSpeech 2: Fast and High-Quality End-to-End Text to Speech](https://arxiv.org/abs/2006.04558). 
