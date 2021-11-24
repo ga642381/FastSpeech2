@@ -102,8 +102,8 @@ class Preprocessor:
     # === 3. Create Dataset === #
     def create_dataset(self):
         """
-        1. train and val, meta will be obtained here
-        2. during "build_fron_path", alignment, f0, energy and mel data will be created
+        * metadata.json will be created
+        * mel, energy, f0,... will be created
         """
         in_dir = self.wav_dir
         out_dir = self.out_dir
@@ -117,8 +117,19 @@ def main(args):
 
 
 if __name__ == "__main__":
+    """
+    e.g.
+    # LJSpeech #
+        * run ./script/organizeLJ.py first
+        * python preprocess.py /storage/tts2021/LJSpeech-organized/wavs /storage/tts2021/LJSpeech-organized/txts ./processed/LJSpeech --prepare_mfa --mfa --create_dataset
+    
+    # LibriTTS #
+        * python preprocess.py /storage/tts2021//LibriTTS/train-clean-360 /storage/tts2021//LibriTTS/train-clean-360 ./processed/LibriTTS --prepare_mfa --mfa --create_dataset
+    
+    # VCTK #
+        * python preprocess.py /storage/tts2021/VCTK-Corpus/wav48/ /storage/tts2021/VCTK-Corpus/txt ./processed/VCTK --prepare_mfa --mfa --create_dataset
+    """
     parser = argparse.ArgumentParser()
-    # parser.add_argument("data_dir", type=str)
     parser.add_argument("wav_dir", type=str)
     parser.add_argument("txt_dir", type=str)
     parser.add_argument("save_dir", type=str)

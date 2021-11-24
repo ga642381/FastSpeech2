@@ -307,6 +307,17 @@ def main(args):
 
 
 if __name__ == "__main__":
+    """
+    e.g.
+    # LJSpeech #
+        * python train.py ./processed/LJSpeech --comment "Hello LJSpeech" 
+    
+    # LibriTTS #
+        * python train.py ./processed/LibriTTS --comment "Hello LibriTTS" 
+    
+    # VCTK #
+        * python train.py ./processed/VCTK --comment "Hello VCTK" 
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("data_dir", type=str)
     parser.add_argument("--record_dir", type=str, default="./records")
