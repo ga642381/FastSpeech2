@@ -6,7 +6,7 @@
 
 <p align="center">
     <br>
-    <img src="https://raw.githubusercontent.com/ga642381/ga642381.github.io/main/assets/FastSpeech2.png" width="700"/>
+    <img src="https://github.com/ga642381/FastSpeech2/blob/main/FastSpeech2.png" width="700"/>
     <br>
 </p>
 
