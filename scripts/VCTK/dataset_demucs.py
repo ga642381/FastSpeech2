@@ -55,5 +55,8 @@ def main(data_dir, save_dir):
 
 
 if __name__ == "__main__":
+    """example usage:
+    python dataset_demucs.py /data/VCTK-Corpus-vad /data/VCTK-Corpus-vad-denoised
+    """
     torchaudio.set_audio_backend("sox_io")
     main(**parse_args())

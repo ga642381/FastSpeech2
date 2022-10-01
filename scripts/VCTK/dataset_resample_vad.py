@@ -10,7 +10,11 @@ import torch
 import torchaudio
 from tqdm import tqdm
 
-from utils.wav2mel import SoxEffects
+# add utils path
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from utils.audio_effect import SoxEffects
 
 """
 The reason we seperate vad from sox effect and make it an independent script is that
@@ -63,7 +67,9 @@ def main(data_dir, save_dir, out_sample_rate):
     print(f"[INFO] {len(wav_files)} wav files found in {data_dir}")
 
     # add noise
-    sox_effects = SoxEffects(resample=True, norm_vad=True, norm=False, sample_rate=out_sample_rate)
+    sox_effects = SoxEffects(
+        resample=True, norm_vad=True, norm=False, sample_rate=out_sample_rate
+    )
     file_to_processed_file = partial(
         process_save_wav,
         processor=sox_effects,
@@ -93,5 +99,8 @@ def main(data_dir, save_dir, out_sample_rate):
 
 
 if __name__ == "__main__":
+    """example usage
+    python dataset_resample_vad.py /data/VCTK-Corpus/ /data/VCTK-Corpus-vad --out_sample_rate 16000
+    """
     torchaudio.set_audio_backend("sox_io")
     main(**parse_args())
