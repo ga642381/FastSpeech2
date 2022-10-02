@@ -51,3 +51,39 @@ LibriTTS:
   energy_min: 0.0
   energy_max: 570.0
   use_spk_embed: True
+
+
+TATTTS:
+  # dsp
+  sampling_rate: 22050
+  n_fft: 1024
+  win_length: 1024
+  hop_length: 256
+  n_mels: 80
+  mel_fmin: 0.0
+  mel_fmax: None
+
+  # fastspeech2
+  f0_min: 70.0
+  f0_max: 800.0
+  energy_min: 0.0
+  energy_max: 1050.0
+  use_spk_embed: True
+
+
+TAT:
+  # dsp
+  sampling_rate: 22050
+  n_fft: 1024
+  win_length: 1024
+  hop_length: 256
+  n_mels: 80
+  mel_fmin: 0.0
+  mel_fmax: None
+
+  # fastspeech2
+  f0_min: 70.0
+  f0_max: 800.0
+  energy_min: 0.0
+  energy_max: 1050.0
+  use_spk_embed: True

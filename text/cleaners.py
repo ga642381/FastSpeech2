@@ -87,3 +87,31 @@ def english_cleaners(text):
     text = expand_abbreviations(text)
     text = collapse_whitespace(text)
     return text
+
+
+def tat_cleaners(text):
+    text = text.replace('-', " ")
+    text = re.sub(r'[^\w\s]', ' ', text)
+    text = lowercase(text)
+    text = collapse_whitespace(text)
+    return text
+
+
+import string
+allowed = set(string.ascii_lowercase + string.digits + ' ')
+twn_vocab = []
+with open("lexicon/taiwanese.txt", 'r', encoding='utf-8') as f:
+    for line in f:
+        if line == "\n":
+            continue
+        word = line.split("\t")[0]
+        twn_vocab.append(word)
+
+def check_twn(test_str):
+    if not set(test_str) <= allowed:
+        return False
+    strs = test_str.split()
+    for s in strs:
+        if s not in twn_vocab:
+            return False
+    return True
