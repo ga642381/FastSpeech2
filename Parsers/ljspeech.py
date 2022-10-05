@@ -12,19 +12,6 @@ class LJSpeechRawParser(object):
     def __init__(self, root: Path, preprocessed_root: Path):
         super().__init__(root)
         self.root = root
-        self.dsets = [
-            "train-clean-100",
-            "train-clean-360",
-            "train-other-500",
-            "dev-clean",
-            "dev-other",
-            "test-clean",
-            "test-other",
-        ]
-        self.data_parser = DataParser(str(preprocessed_root))
-
-    def __init__(self, root: Path, preprocessed_root: Path):
-        super().__init__(root)
         self.data_parser = DataParser(str(preprocessed_root))
 
     def prepare_initial_features(self, query, data):

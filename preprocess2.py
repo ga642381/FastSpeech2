@@ -3,9 +3,6 @@ import os
 import numpy as np
 import torchaudio
 from pathlib import Path
-import shutil
-import librosa
-from tqdm import tqdm
 
 from config import hparams as hp
 from preprocessing.preprocess_raw import preprocess_raw
@@ -38,15 +35,17 @@ class Preprocessor:
 
         if key_input in ["y", "Y"]:
             # 0. Initial features from raw data
-            # self.prepare_initial_features()
+            if self.args.parse_raw:
+                print("[INFO] Parsing raw corpus...")
+                self.prepare_initial_features()
             # 1. Denoising
             if self.args.denoise:
-                print("[INFO] Preparing data for Montreal Force Alignmnet...")
+                print("[INFO] Denoising corpus...")
                 torchaudio.set_audio_backend("sox_io")
                 self.processor.denoise()
             # 2. Prepare MFA
             if self.args.prepare_mfa:
-                print("[INFO] Preparing data for Montreal Force Alignmnet...")
+                print("[INFO] Preparing data for Montreal Force Alignment...")
                 self.processor.prepare_mfa(Path(self.root) / "mfa_data")
             # 3. MFA
             if self.args.mfa:
@@ -65,6 +64,8 @@ class Preprocessor:
         print(f"* Output path : {self.preprocessed_root}")
         print("\n")
         print(" [INFO] The following will be executed:")
+        if self.args.parse_raw:
+            print("* Parsing raw corpus")
         if self.args.denoise:
             print("* Denoising corpus")
         if self.args.prepare_mfa:
@@ -77,17 +78,6 @@ class Preprocessor:
 
     def prepare_initial_features(self):
         preprocess_raw(hp.dataset, self.root, self.preprocessed_root)
-
-    # === 4. Create Dataset === #
-    def create_dataset(self):
-        """
-        * metadata.json will be created
-        * mel, energy, f0,... will be created
-        """
-        in_dir = self.wav_dir
-        out_dir = self.out_dir
-
-        F.build_dataset(in_dir, out_dir)
 
 
 def main(args):
@@ -112,6 +102,7 @@ if __name__ == "__main__":
     parser.add_argument("raw_dir", type=str)
     parser.add_argument("preprocessed_dir", type=str)
 
+    parser.add_argument("--parse_raw", action="store_true", default=False)
     parser.add_argument("--denoise", action="store_true", default=False)
     parser.add_argument("--prepare_mfa", action="store_true", default=False)
     parser.add_argument("--mfa", action="store_true", default=False)

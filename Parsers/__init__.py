@@ -3,18 +3,21 @@ from typing import Type
 from .interface import BasePreprocessor, BaseRawParser
 from .TAT import TATPreprocessor, TATRawParser
 from .TAT_TTS import TATTTSPreprocessor, TATTTSRawParser
+from .libritts import LibriTTSPreprocessor, LibriTTSRawParser
 
 
 PREPROCESSORS = {
     "LJSpeech": None,
-    "LibriTTS": None,
+    "LibriTTS": LibriTTSPreprocessor,
+    "AISHELL-3": None,
     "TAT": TATPreprocessor,
     "TATTTS": TATTTSPreprocessor,
 }
 
 RAWPARSERS = {
     "LJSpeech": None,
-    "LibriTTS": None,
+    "LibriTTS": LibriTTSRawParser,
+    "AISHELL-3": None,
     "TAT": TATRawParser,
     "TATTTS": TATTTSRawParser,
 }

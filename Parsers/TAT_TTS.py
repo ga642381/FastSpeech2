@@ -4,11 +4,14 @@ import json
 from pathlib import Path
 import librosa
 
+from dlhlp_lib.audio import AUDIO_CONFIG
+
 from Parsers.interface import BaseRawParser, BasePreprocessor
 from text import clean_text
 from text.cleaners import check_twn
 from .parser import DataParser
 from preprocessing import preprocess_func
+from preprocessing.preprocess_func_mp import *
 
 
 class TATTTSRawParser(BaseRawParser):
@@ -27,9 +30,9 @@ class TATTTSRawParser(BaseRawParser):
         res = {"data": [], "data_info": [], "all_speakers": []}
         spker_dirs = [d for d in self.root.iterdir() if d.is_dir()]
         print(f'[INFO] {len(spker_dirs)} speakers were found in wav dir : "{self.root}"')
-        for spker_dir in tqdm(spker_dirs):
+        for spker_dir in tqdm(spker_dirs, position=0):
             res["all_speakers"].append(spker_dir.name)
-            for wav_file in tqdm(spker_dir.rglob("*.wav")):
+            for wav_file in tqdm(spker_dir.rglob("*.wav"), position=1, leave=False):
                 wav_path = str(wav_file)
                 info_file = str(wav_file)[:-4] + '.json'
                 with open(info_file, "r", encoding="utf-8") as f:
@@ -45,7 +48,7 @@ class TATTTSRawParser(BaseRawParser):
                 }
                 data_info = {
                     "spk": spker_dir.name,
-                    "basename": wav_file.name[:-4],
+                    "basename": f"{spker_dir.name}-{wav_file.name[:-4]}",
                 }
                 res["data"].append(data)
                 res["data_info"].append(data_info)
@@ -98,4 +101,38 @@ class TATTTSPreprocessor(BasePreprocessor):
         pass
 
     def create_dataset(self):
-        pass
+        INV_FRAME_PERIOD = AUDIO_CONFIG["audio"]["sampling_rate"] / AUDIO_CONFIG["stft"]["hop_length"]
+        queries = self.data_parser.get_all_queries()
+        textgrid2segment_and_phoneme_mp(
+            self.data_parser, queries,
+            "textgrid", "mfa_segment", "phoneme",
+            n_workers=os.cpu_count() // 2,
+            ignore_errors=True
+        )
+        # trim_wav_by_segment_mp(
+        #     self.data_parser, queries, 22050, 
+        #     "wav_22050_enhanced", "mfa_segment", "wav_trim_22050_enhanced",
+        #     refresh=True,
+        #     n_workers=2,
+        #     ignore_errors=True
+        # )
+        # wav_to_mel_energy_pitch_mp(
+        #     self.data_parser, queries,
+        #     "wav_trim_22050_enhanced", "mel", "energy", "pitch", "interpolate_pitch",
+        #     n_workers=4,
+        #     ignore_errors=True
+        # )
+        # segment2duration_mp(
+        #     self.data_parser, queries, INV_FRAME_PERIOD,
+        #     "mfa_segment", "mfa_duration",
+        #     refresh=True,
+        #     n_workers=os.cpu_count() // 2,
+        #     ignore_errors=True
+        # )
+        # duration_avg_pitch_and_energy_mp(
+        #     self.data_parser, queries,
+        #     "mfa_duration", "interpolate_pitch", "energy",
+        #     refresh=True,
+        #     n_workers=os.cpu_count() // 2,
+        #     ignore_errors=True
+        # )

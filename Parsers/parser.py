@@ -26,32 +26,32 @@ class DataParser(BaseDataParser):
             "wav_22050_enhanced", root, SFQueryParser(f"{self.root}/wav_22050_enhanced"), WavIO(sr=22050))
         
         self.mfa_segment = Feature(
-            "mfa_segment", root, SFQueryParser(f"{self.root}/mfa_segment"), PickleIO(), enable_cache=True)
+            "mfa_segment", root, NestSFQueryParser(f"{self.root}/mfa_segment"), PickleIO(), enable_cache=True)
         self.textgrid = Feature(
             "TextGrid", root, NestSFQueryParser(f"{self.root}/TextGrid"), TextGridIO())
         self.phoneme = Feature(
-            "phoneme", root, SFQueryParser(f"{self.root}/phoneme"), TextIO(), enable_cache=True)
+            "phoneme", root, NestSFQueryParser(f"{self.root}/phoneme"), TextIO(), enable_cache=True)
         self.text = Feature(
-            "text", root, SFQueryParser(f"{self.root}/text"), TextIO(), enable_cache=True)
+            "text", root, NestSFQueryParser(f"{self.root}/text"), TextIO(), enable_cache=True)
 
         self.wav_trim_22050 = Feature(
-            "wav_trim_22050", root, SFQueryParser(f"{self.root}/wav_trim_22050"), NumpyIO())
+            "wav_trim_22050", root, NestSFQueryParser(f"{self.root}/wav_trim_22050"), NumpyIO())
         self.wav_trim_22050_enhanced = Feature(
-            "wav_trim_22050_enhanced", root, SFQueryParser(f"{self.root}/wav_trim_22050_enhanced"), NumpyIO())
+            "wav_trim_22050_enhanced", root, NestSFQueryParser(f"{self.root}/wav_trim_22050_enhanced"), NumpyIO())
         self.mel = Feature(
-            "mel", root, SFQueryParser(f"{self.root}/mel"), NumpyIO())
+            "mel", root, NestSFQueryParser(f"{self.root}/mel"), NumpyIO())
         self.pitch = Feature(
-            "pitch", root, SFQueryParser(f"{self.root}/pitch"), NumpyIO(), enable_cache=True)
+            "pitch", root, NestSFQueryParser(f"{self.root}/pitch"), NumpyIO(), enable_cache=True)
         self.interpolate_pitch = Feature(
-            "interpolate_pitch", root, SFQueryParser(f"{self.root}/interpolate_pitch"), NumpyIO(), enable_cache=True)
+            "interpolate_pitch", root, NestSFQueryParser(f"{self.root}/interpolate_pitch"), NumpyIO(), enable_cache=True)
         self.energy = Feature(
-            "energy", root, SFQueryParser(f"{self.root}/energy"), NumpyIO(), enable_cache=True)
+            "energy", root, NestSFQueryParser(f"{self.root}/energy"), NumpyIO(), enable_cache=True)
         self.mfa_duration = Feature(
-            "mfa_duration", root, SFQueryParser(f"{self.root}/mfa_duration"), NumpyIO(), enable_cache=True)
+            "mfa_duration", root, NestSFQueryParser(f"{self.root}/alignment"), NumpyIO(), enable_cache=True)
         self.mfa_duration_avg_pitch = Feature(
-            "mfa_duration_avg_pitch", root, SFQueryParser(f"{self.root}/mfa_duration_avg_pitch"), NumpyIO(), enable_cache=True)
+            "mfa_duration_avg_pitch", root, NestSFQueryParser(f"{self.root}/alignment_avg_pitch"), NumpyIO(), enable_cache=True)
         self.mfa_duration_avg_energy = Feature(
-            "mfa_duration_avg_energy", root, SFQueryParser(f"{self.root}/mfa_duration_avg_energy"), NumpyIO(), enable_cache=True)
+            "mfa_duration_avg_energy", root, NestSFQueryParser(f"{self.root}/alignment_avg_energy"), NumpyIO(), enable_cache=True)
         
         self.stats_path = f"{self.root}/stats.json"
         self.speakers_path = f"{self.root}/speakers.json"
@@ -72,9 +72,9 @@ class DataParser(BaseDataParser):
         os.makedirs(f"{self.root}/pitch", exist_ok=True)
         os.makedirs(f"{self.root}/interpolate_pitch", exist_ok=True)
         os.makedirs(f"{self.root}/energy", exist_ok=True)
-        os.makedirs(f"{self.root}/mfa_duration", exist_ok=True)
-        os.makedirs(f"{self.root}/mfa_duration_avg_pitch", exist_ok=True)
-        os.makedirs(f"{self.root}/mfa_duration_avg_energy", exist_ok=True)
+        os.makedirs(f"{self.root}/alignment", exist_ok=True)
+        os.makedirs(f"{self.root}/alignment_avg_pitch", exist_ok=True)
+        os.makedirs(f"{self.root}/alignment_avg_energy", exist_ok=True)
     
     def get_all_queries(self):
         with open(f"{self.root}/data_info.json", "r", encoding="utf-8") as f:
