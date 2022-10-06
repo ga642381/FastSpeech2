@@ -1,12 +1,8 @@
-from codecs import ignore_errors
 import os
-import numpy as np
 from tqdm import tqdm
 import json
 from pathlib import Path
 import librosa
-
-from dlhlp_lib.audio import AUDIO_CONFIG
 
 from Parsers.interface import BaseRawParser, BasePreprocessor
 from text import clean_text
@@ -28,7 +24,7 @@ class TATRawParser(BaseRawParser):
         self.data_parser.wav_22050.save(wav_22050, query)
         self.data_parser.text.save(data["text"], query)
 
-    def parse(self):
+    def parse(self, n_workers=4):
         res = {"data": [], "data_info": [], "all_speakers": []}
         for dset in ["TAT-Vol1-train", "TAT-Vol2-train", "TAT-Vol1-eval", "TAT-Vol1-test", "TAT-Vol2-eval", "TAT-Vol2-test"]:
             wav_dir = self.root /  dset / "condenser" / "wav"
@@ -59,7 +55,18 @@ class TATRawParser(BaseRawParser):
                     }
                     res["data"].append(data)
                     res["data_info"].append(data_info)
-        return res
+
+        with open(self.data_parser.metadata_path, "w", encoding="utf-8") as f:
+            json.dump(res["data_info"], f, indent=4)
+        with open(self.data_parser.speakers_path, "w", encoding="utf-8") as f:
+            json.dump(res["all_speakers"], f, indent=4)
+
+        n = len(res["data_info"])
+        tasks = list(zip(res["data_info"], res["data"], [False] * n))
+        
+        with Pool(processes=n_workers) as pool:
+            for res in tqdm(pool.imap(ImapWrapper(self.prepare_initial_features), tasks, chunksize=64), total=n):
+                pass
 
 
 class TATPreprocessor(BasePreprocessor):
@@ -106,38 +113,15 @@ class TATPreprocessor(BasePreprocessor):
         preprocess_func.denoise(self.root / "wav_16000", self.root / "wav_16000_enhanced")
 
     def create_dataset(self):
-        INV_FRAME_PERIOD = AUDIO_CONFIG["audio"]["sampling_rate"] / AUDIO_CONFIG["stft"]["hop_length"]
         queries = self.data_parser.get_all_queries()
-        textgrid2segment_and_phoneme_mp(
+        resample_mp(
             self.data_parser, queries,
-            "textgrid", "mfa_segment", "phoneme",
-            n_workers=os.cpu_count() // 2,
-            ignore_errors=False
+            "wav_16000_enhanced", "wav_22050_enhanced", sr=22050,
+            n_workers=8, chunksize=64
         )
-        # trim_wav_by_segment_mp(
-        #     self.data_parser, queries, 22050, 
-        #     "wav_22050_enhanced", "mfa_segment", "wav_trim_22050_enhanced",
-        #     refresh=True,
-        #     n_workers=2,
-        #     ignore_errors=True
-        # )
-        # wav_to_mel_energy_pitch_mp(
-        #     self.data_parser, queries,
-        #     "wav_trim_22050_enhanced", "mel", "energy", "pitch", "interpolate_pitch",
-        #     n_workers=4,
-        #     ignore_errors=True
-        # )
-        # segment2duration_mp(
-        #     self.data_parser, queries, INV_FRAME_PERIOD,
-        #     "mfa_segment", "mfa_duration",
-        #     refresh=True,
-        #     n_workers=os.cpu_count() // 2,
-        #     ignore_errors=True
-        # )
-        # duration_avg_pitch_and_energy_mp(
-        #     self.data_parser, queries,
-        #     "mfa_duration", "interpolate_pitch", "energy",
-        #     refresh=True,
-        #     n_workers=os.cpu_count() // 2,
-        #     ignore_errors=True
-        # )
+        process_utterance_mp(
+            self.data_parser, queries,
+            "wav_22050_enhanced",
+            n_workers=8, chunksize=64,
+            ignore_errors=True
+        )

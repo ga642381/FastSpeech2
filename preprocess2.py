@@ -5,8 +5,9 @@ import torchaudio
 from pathlib import Path
 
 from config import hparams as hp
-from preprocessing.preprocess_raw import preprocess_raw
-from Parsers import get_preprocessor
+from Parsers import get_raw_parser, get_preprocessor
+from Parsers.parser import DataParser
+from preprocessing.split_dataset import split_dataset
 
 
 if hp.dataset in ["LibriTTS", "VCTK", "LJSpeech", "TAT", "TATTTS"]:
@@ -25,6 +26,7 @@ class Preprocessor:
         self.dataset = hp.dataset
         self.root = args.raw_dir
         self.preprocessed_root = args.preprocessed_dir
+        self.raw_parser = get_raw_parser(hp.dataset)(Path(args.raw_dir), Path(args.preprocessed_dir))
         self.processor = get_preprocessor(hp.dataset)(Path(args.preprocessed_dir))
 
     def exec(self):
@@ -37,7 +39,7 @@ class Preprocessor:
             # 0. Initial features from raw data
             if self.args.parse_raw:
                 print("[INFO] Parsing raw corpus...")
-                self.prepare_initial_features()
+                self.raw_parser.parse()
             # 1. Denoising
             if self.args.denoise:
                 print("[INFO] Denoising corpus...")
@@ -46,15 +48,16 @@ class Preprocessor:
             # 2. Prepare MFA
             if self.args.prepare_mfa:
                 print("[INFO] Preparing data for Montreal Force Alignment...")
-                self.processor.prepare_mfa(Path(self.root) / "mfa_data")
+                self.processor.prepare_mfa(Path(self.preprocessed_root) / "mfa_data")
             # 3. MFA
             if self.args.mfa:
                 print("[INFO] Performing Montreal Force Alignment...")
-                self.processor.mfa(Path(self.root) / "mfa_data")
+                self.processor.mfa(Path(self.preprocessed_root) / "mfa_data")
             # 4. Create Dataset
             if self.args.create_dataset:
                 print("[INFO] Creating Training and Validation Dataset...")
-                self.processor.create_dataset()
+                # self.processor.create_dataset()
+                split_dataset(DataParser(args.preprocessed_dir))
 
     def print_message(self):
         print("\n")
@@ -75,9 +78,6 @@ class Preprocessor:
         if self.args.create_dataset:
             print("* Creating Training Dataset")
         print("\n")
-
-    def prepare_initial_features(self):
-        preprocess_raw(hp.dataset, self.root, self.preprocessed_root)
 
 
 def main(args):

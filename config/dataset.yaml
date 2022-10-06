@@ -9,7 +9,7 @@ LJSpeech:
   hop_length: 256
   n_mels: 80
   mel_fmin: 0.0
-  mel_fmax: None
+  mel_fmax: null
 
   # fastspeech2
   f0_min: 70.0
@@ -26,7 +26,7 @@ VCTK:
   hop_length: 256
   n_mels: 80
   mel_fmin: 0.0
-  mel_fmax: None
+  mel_fmax: null
 
   # fastspeech2
   f0_min: 70.0
@@ -43,7 +43,7 @@ LibriTTS:
   hop_length: 256
   n_mels: 80
   mel_fmin: 0.0
-  mel_fmax: None
+  mel_fmax: null
 
   # fastspeech2
   f0_min: 70.0
@@ -61,7 +61,7 @@ TATTTS:
   hop_length: 256
   n_mels: 80
   mel_fmin: 0.0
-  mel_fmax: None
+  mel_fmax: null
 
   # fastspeech2
   f0_min: 70.0
@@ -79,7 +79,7 @@ TAT:
   hop_length: 256
   n_mels: 80
   mel_fmin: 0.0
-  mel_fmax: None
+  mel_fmax: null
 
   # fastspeech2
   f0_min: 70.0

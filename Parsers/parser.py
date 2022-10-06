@@ -5,7 +5,7 @@ from typing import Dict, List
 from dlhlp_lib.parsers.Interfaces import BaseDataParser
 from dlhlp_lib.parsers.Feature import Feature
 from dlhlp_lib.parsers.QueryParsers import SFQueryParser, NestSFQueryParser
-from dlhlp_lib.parsers.IOObjects import NumpyIO, PickleIO, WavIO, TextGridIO, TextIO
+from dlhlp_lib.parsers.IOObjects import NumpyIO, JSONIO, WavIO, TextGridIO, TextIO
 
 
 class DataParser(BaseDataParser):
@@ -26,7 +26,7 @@ class DataParser(BaseDataParser):
             "wav_22050_enhanced", root, SFQueryParser(f"{self.root}/wav_22050_enhanced"), WavIO(sr=22050))
         
         self.mfa_segment = Feature(
-            "mfa_segment", root, NestSFQueryParser(f"{self.root}/mfa_segment"), PickleIO(), enable_cache=True)
+            "mfa_segment", root, NestSFQueryParser(f"{self.root}/mfa_segment"), JSONIO(), enable_cache=True)
         self.textgrid = Feature(
             "TextGrid", root, NestSFQueryParser(f"{self.root}/TextGrid"), TextGridIO())
         self.phoneme = Feature(
@@ -53,31 +53,18 @@ class DataParser(BaseDataParser):
         self.mfa_duration_avg_energy = Feature(
             "mfa_duration_avg_energy", root, NestSFQueryParser(f"{self.root}/alignment_avg_energy"), NumpyIO(), enable_cache=True)
         
-        self.stats_path = f"{self.root}/stats.json"
         self.speakers_path = f"{self.root}/speakers.json"
+        self.metadata_path = f"{self.root}/data_info.json"
 
     def _init_structure(self):
         os.makedirs(f"{self.root}/wav_16000", exist_ok=True)
         os.makedirs(f"{self.root}/wav_22050", exist_ok=True)
         os.makedirs(f"{self.root}/wav_16000_enhanced", exist_ok=True)
         os.makedirs(f"{self.root}/wav_22050_enhanced", exist_ok=True)
-
-        os.makedirs(f"{self.root}/mfa_segment", exist_ok=True)
-        os.makedirs(f"{self.root}/phoneme", exist_ok=True)
         os.makedirs(f"{self.root}/text", exist_ok=True)
-
-        os.makedirs(f"{self.root}/wav_trim_22050", exist_ok=True)
-        os.makedirs(f"{self.root}/wav_trim_22050_enhanced", exist_ok=True)
-        os.makedirs(f"{self.root}/mel", exist_ok=True)
-        os.makedirs(f"{self.root}/pitch", exist_ok=True)
-        os.makedirs(f"{self.root}/interpolate_pitch", exist_ok=True)
-        os.makedirs(f"{self.root}/energy", exist_ok=True)
-        os.makedirs(f"{self.root}/alignment", exist_ok=True)
-        os.makedirs(f"{self.root}/alignment_avg_pitch", exist_ok=True)
-        os.makedirs(f"{self.root}/alignment_avg_energy", exist_ok=True)
     
     def get_all_queries(self):
-        with open(f"{self.root}/data_info.json", "r", encoding="utf-8") as f:
+        with open(self.metadata_path, "r", encoding="utf-8") as f:
             data_infos = json.load(f)
         return data_infos
 

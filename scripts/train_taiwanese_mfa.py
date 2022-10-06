@@ -10,9 +10,7 @@ import os
 from pathlib import Path
 from multiprocessing import set_start_method
 
-from Parsers.TAT import TATPreprocessor
-from Parsers.TAT_TTS import TATTTSPreprocessor
-from preprocessing.preprocess_raw import preprocess_raw
+from Parsers import get_raw_parser, get_preprocessor
 
 
 if __name__ == "__main__":
@@ -20,20 +18,18 @@ if __name__ == "__main__":
     if platform == "linux" or platform == "linux2":
         set_start_method("spawn", force=True)
 
-    # prepare initial features
-    preprocess_raw("TATTTS", Path("/mnt/d/Data/TAT-TTS"), Path("preprocessed/TAT-TTS"), n_workers=4)
-    preprocess_raw("TAT", Path("/mnt/d/Data/TAT"), Path("preprocessed/TAT"), n_workers=4)
-
-    # mfa
     mfa_data_dir = Path("MFA/TAT/mfa_data")
-    prepocessor = TATTTSPreprocessor(Path("preprocessed/TAT-TTS"))
-    prepocessor.prepare_mfa(mfa_data_dir)
-    prepocessor = TATPreprocessor(Path("preprocessed/TAT"))
+    raw_parser = get_raw_parser("TATTTS")(Path("/mnt/d/Data/TAT-TTS"), Path("preprocessed/TAT-TTS"))
+    prepocessor = get_preprocessor(Path("preprocessed/TAT-TTS"))
+    raw_parser.parse(n_workers=8)
     prepocessor.prepare_mfa(mfa_data_dir)
 
-    os.makedirs("MFA/TAT", exist_ok=True)
-    corpus_directory = "MFA/TAT/mfa_data"
+    raw_parser = get_raw_parser("TAT")(Path("/mnt/d/Data/TAT"), Path("preprocessed/TAT"))
+    prepocessor = get_preprocessor(Path("preprocessed/TAT"))
+    raw_parser.parse(n_workers=8)
+    prepocessor.prepare_mfa(mfa_data_dir)
+
     dictionary_path = "lexicon/taiwanese.txt"
     output_paths = "MFA/TAT/taiwanese_acoustic_model.zip"
-    cmd = f"mfa train {corpus_directory} {dictionary_path} {output_paths} -j 8 -v --clean"
+    cmd = f"mfa train {str(mfa_data_dir)} {dictionary_path} {output_paths} -j 8 -v --clean"
     os.system(cmd)

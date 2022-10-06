@@ -51,7 +51,7 @@ class Synthesizer:
         phone = "{" + "}{".join(phone) + "}"
         phone = re.sub(r"\{[^\w\s]?\}", "{sp}", phone)
         phone = phone.replace("}{", " ")
-        text = text_to_sequence(phone, hp.text_cleaners)
+        text = text_to_sequence(phone, hp.text_cleaners, hp.lang_id)
         return text
 
     def synthesize(self, texts: list):

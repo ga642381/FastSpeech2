@@ -2,10 +2,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 from config import hparams as hp
-from text.symbols import symbols
+# from text.symbols import symbols
 
 import transformer.Constants as Constants
 from transformer.Layers import FFTBlock
+from text.define import LANG_ID2SYMBOLS
 
 
 def get_sinusoid_encoding_table(n_position, d_hid, padding_idx=None):
@@ -36,7 +37,7 @@ class Encoder(nn.Module):
 
     def __init__(
         self,
-        n_src_vocab=len(symbols) + 1,
+        n_src_vocab=len(LANG_ID2SYMBOLS[hp.lang_id]) + 1,
         len_max_seq=hp.max_seq_len,
         d_word_vec=hp.encoder_hidden,
         n_layers=hp.encoder_layer,
