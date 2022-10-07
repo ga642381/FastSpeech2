@@ -4,20 +4,22 @@ from .interface import BasePreprocessor, BaseRawParser
 from .TAT import TATPreprocessor, TATRawParser
 from .TAT_TTS import TATTTSPreprocessor, TATTTSRawParser
 from .libritts import LibriTTSPreprocessor, LibriTTSRawParser
+from .ljspeech import LJSpeechPreprocessor, LJSpeechRawParser
+from .aishell3 import AISHELL3Preprocessor, AISHELL3RawParser 
 
 
 PREPROCESSORS = {
-    "LJSpeech": None,
+    "LJSpeech": LJSpeechPreprocessor,
     "LibriTTS": LibriTTSPreprocessor,
-    "AISHELL-3": None,
+    "AISHELL-3": AISHELL3Preprocessor,
     "TAT": TATPreprocessor,
     "TATTTS": TATTTSPreprocessor,
 }
 
 RAWPARSERS = {
-    "LJSpeech": None,
+    "LJSpeech": LJSpeechRawParser,
     "LibriTTS": LibriTTSRawParser,
-    "AISHELL-3": None,
+    "AISHELL-3": AISHELL3RawParser,
     "TAT": TATRawParser,
     "TATTTS": TATTTSRawParser,
 }

@@ -1,6 +1,7 @@
 import yaml
 
 dataset = "TAT"  # [LibriTTS, VCTK, LJSpeech, TAT, TATTTS]
+lang_id = "twn"
 mfa_path = "./MFA"
 
 ### Text ###
@@ -57,7 +58,7 @@ spk_embed_dim = 256
 spk_embed_weight_std = 0.01
 
 ### Optimizer ###
-batch_size = 32
+batch_size = 16
 n_warm_up_step = 4000
 grad_clip_thresh = 1.0
 acc_steps = 1
@@ -78,3 +79,6 @@ log_offset = 1.0
 save_step = 10000
 eval_step = save_step
 log_step = 1000
+
+# cuda
+CUDA_LAUNCH_BLOCKING=True

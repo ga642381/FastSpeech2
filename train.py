@@ -10,10 +10,15 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
-from audio.wavmel import Vocoder
+from dlhlp_lib.vocoders import MelGAN
 from config import hparams as hp
+from torch.utils.data import ConcatDataset
 from data.dataset import Dataset
 from model import FastSpeech2, FastSpeech2Loss, ScheduledOptim
+
+
+if hp.CUDA_LAUNCH_BLOCKING:
+    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 # gt : ground truth
@@ -32,14 +37,15 @@ class Trainer:
             self.inv_speaker_table,
         ) = self.__init_dataset()
         self.train_logger, self.eval_logger = self.__init_logger()
-        self.vocoder = Vocoder("melgan")
+        self.vocoder = MelGAN()
+        self.vocoder.cuda()
 
         # === nn === #
         self.model = self.__init_model(n_spkers=self.n_spkers).to(self.device)
         self.loss = FastSpeech2Loss().to(self.device)
         self.optimizer, self.scheduled_optim = self.__init_optimizer(restore_step)
         if restore_step > 0:
-            self.__load_model(self.path["checkpoint_path"], restore_step)
+            self.__load_model(self.paths["checkpoint_path"], restore_step)
             self.train_step = restore_step
             print(f"[Training] Model Restored at Step {self.train_step}")
         else:
@@ -99,26 +105,43 @@ class Trainer:
                     self.train_step += 1
 
     def __init_dataset(self):
-        train_dataset = Dataset(data_dir=self.paths["data_dir"], split="train")
-        valid_dataset = Dataset(data_dir=self.paths["data_dir"], split="valid")
+        # Multiple datasets
+        all_spkers = set()
+        train_datasets, valid_datasets = [], []
+        for d in self.paths["data_dir"]:
+            train_dataset = Dataset(data_dir=d, split="train")
+            valid_dataset = Dataset(data_dir=d, split="valid")
+            all_spkers.update(train_dataset.spkers)
+            all_spkers.update(valid_dataset.spkers)
+            train_datasets.append(train_dataset)
+            valid_datasets.append(valid_dataset)
+
+        all_spkers = list(all_spkers)
+        all_spkers.sort()
+        train_dataset, valid_dataset = ConcatDataset(train_datasets), ConcatDataset(valid_datasets)
+        for dset in train_dataset.datasets:
+            dset.set_speakers(all_spkers)
+        for dset in valid_dataset.datasets:
+            dset.set_speakers(all_spkers)
+        
         train_loader = DataLoader(
             train_dataset,
             batch_size=hp.batch_size ** 2,
             shuffle=True,
-            collate_fn=train_dataset.collate_fn,
+            collate_fn=train_datasets[0].collate_fn,
             drop_last=True,
-            num_workers=0,
+            num_workers=4,
         )
         valid_loader = DataLoader(
             valid_dataset,
             batch_size=hp.batch_size ** 2,
             shuffle=False,
-            collate_fn=train_dataset.collate_fn,
+            collate_fn=train_datasets[0].collate_fn,
             drop_last=False,
-            num_workers=0,
+            num_workers=4,
         )
-        n_spkers = len(train_dataset.spker_table)
-        spker_table = train_dataset.spker_table
+        n_spkers = len(all_spkers)
+        spker_table = train_datasets[0].spker_table  # spker table is shared for all datasets
         inv_spker_table = {v: k for k, v in spker_table.items()}
         return train_loader, valid_loader, n_spkers, spker_table, inv_spker_table
 
@@ -191,9 +214,9 @@ class Trainer:
     ):
         # mel.shape : (batch, time, mel_dim)
         save_dir.mkdir(parents=True, exist_ok=True)
-        wav_lens = [m * self.vocoder.hop_length for m in mel_lens]
-        wav = self.vocoder.mel2wav(mel.transpose(1, 2))
-        utils.save_audios(wav, wav_lens, data_ids, save_dir)
+        wav_lens = [m * hp.hop_length for m in mel_lens]
+        wavs = self.vocoder.infer(mel.transpose(1, 2), wav_lens)
+        utils.save_audios(wavs, wav_lens, data_ids, save_dir)
 
     def __eval_and_synth(self):
         self.model.eval()
@@ -205,7 +228,7 @@ class Trainer:
         synth_gt = True if not gt_synth_path.exists() else False
         # total_loss, mel_loss, mel_postnet_loss, d_loss, f_loss, e_loss
         L = (0, 0, 0, 0, 0, 0)
-        for batches in tqdm(self.valid_loader):
+        for i, batches in tqdm(enumerate(self.valid_loader), total=len(self.valid_loader)):
             for batch in batches:
                 model_batch, gt_batch = utils.data_to_device(batch, self.device)
                 with torch.no_grad():
@@ -225,30 +248,31 @@ class Trainer:
                     # accumulate loss
                     L = tuple(a + b for a, b in zip(L, l))
 
-                # synthesize ground truth mel spectrogram
-                if synth_gt:
+                if i < 1:  # only synth first batch
+                    # synthesize ground truth mel spectrogram
+                    if synth_gt:
+                        self.__synth(
+                            mel=gt_batch[-1],
+                            mel_lens=mel_lens,
+                            data_ids=batch["data_id"],
+                            save_dir=gt_synth_path,
+                        )
+
+                    # synthesize predicted mel spectrogram
                     self.__synth(
-                        mel=gt_batch[-1],
+                        mel=model_pred[1],
                         mel_lens=mel_lens,
                         data_ids=batch["data_id"],
-                        save_dir=gt_synth_path,
+                        save_dir=pred_synth_path,
                     )
 
-                # synthesize predicted mel spectrogram
-                self.__synth(
-                    mel=model_pred[1],
-                    mel_lens=mel_lens,
-                    data_ids=batch["data_id"],
-                    save_dir=pred_synth_path,
-                )
-
-                # plot ground truth and predicted mel spectrogram
-                utils.plot_mel(
-                    mel_gt=gt_batch[-1],
-                    mel_pred=model_pred[1],
-                    data_ids=batch["data_id"],
-                    save_dir=pred_synth_path,
-                )
+                    # plot ground truth and predicted mel spectrogram
+                    utils.plot_mel(
+                        mel_gt=gt_batch[-1],
+                        mel_pred=model_pred[1],
+                        data_ids=batch["data_id"],
+                        save_dir=pred_synth_path,
+                    )
 
                 batch_num += 1
         # log
@@ -287,17 +311,17 @@ class Trainer:
 
 
 def main(args):
-    date_time = datetime.today().strftime("%Y-%m-%d-%H:%M")
-    record_idx = f"{hp.dataset}_{date_time}"
+    # date_time = datetime.today().strftime("%Y-%m-%d-%H:%M")
+    record_idx = f"{args.exp_name}"
     paths = {}
-    paths["data_dir"] = Path(args.data_dir).resolve()
+    paths["data_dir"] = args.data_dir
     record_root = Path(args.record_dir).resolve()
     paths["checkpoint_path"] = Path(record_root / record_idx / "ckpt").resolve()
     paths["synth_path"] = Path(record_root / record_idx / "synth").resolve()
     paths["log_path"] = Path(record_root / record_idx / "log").resolve()
     record_file_path = Path(record_root / "comments.txt").resolve()
 
-    utils.make_paths(list(paths.values()))
+    utils.make_paths(list(paths.values())[1:])
     utils.add_comment(record_file_path, record_idx, args.comment)
 
     # === training === #
@@ -319,7 +343,8 @@ if __name__ == "__main__":
         * python train.py ./processed/VCTK --comment "Hello VCTK" 
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("data_dir", type=str)
+    parser.add_argument("--data_dir", type=str, nargs='+')
+    parser.add_argument("--exp_name", type=str)
     parser.add_argument("--record_dir", type=str, default="./records")
     parser.add_argument("--comment", type=str, default="None")
     parser.add_argument("--restore_step", type=int, default=0)

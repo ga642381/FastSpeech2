@@ -1,11 +1,13 @@
 import os
 from tqdm import tqdm
+import json
 from pathlib import Path
 import librosa
 
 from Parsers.interface import BaseRawParser, BasePreprocessor
 from .parser import DataParser
 from preprocessing import preprocess_func
+from preprocessing.preprocess_func_mp import *
 
 
 class LibriTTSRawParser(BaseRawParser):
@@ -29,7 +31,7 @@ class LibriTTSRawParser(BaseRawParser):
         self.data_parser.wav_22050.save(wav_22050, query)
         self.data_parser.text.save(data["text"], query)
 
-    def parse(self):
+    def parse(self, n_workers=4):
         res = {"data": [], "data_info": [], "all_speakers": []}
         for dset in self.dsets:
             if not os.path.isdir(f"{self.root}/{dset}"):
@@ -57,7 +59,18 @@ class LibriTTSRawParser(BaseRawParser):
                         }
                         res["data"].append(data)
                         res["data_info"].append(data_info)
-        return res
+
+        with open(self.data_parser.metadata_path, "w", encoding="utf-8") as f:
+            json.dump(res["data_info"], f, indent=4)
+        with open(self.data_parser.speakers_path, "w", encoding="utf-8") as f:
+            json.dump(res["all_speakers"], f, indent=4)
+
+        n = len(res["data_info"])
+        tasks = list(zip(res["data_info"], res["data"], [False] * n))
+        
+        with Pool(processes=n_workers) as pool:
+            for res in tqdm(pool.imap(ImapWrapper(self.prepare_initial_features), tasks, chunksize=64), total=n):
+                pass
 
 
 class LibriTTSPreprocessor(BasePreprocessor):
@@ -99,4 +112,10 @@ class LibriTTSPreprocessor(BasePreprocessor):
         pass
 
     def create_dataset(self):
-        pass
+        queries = self.data_parser.get_all_queries()
+        process_utterance_mp(
+            self.data_parser, queries,
+            "wav_22050",
+            n_workers=8, chunksize=64,
+            ignore_errors=True
+        )

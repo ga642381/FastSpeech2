@@ -1,18 +1,28 @@
 import os
 from tqdm import tqdm
+import json
 from pathlib import Path
 import librosa
 
-from dlhlp_lib.parsers.Interfaces import BaseRawParser
-
+from Parsers.interface import BaseRawParser, BasePreprocessor
 from .parser import DataParser
+from preprocessing import preprocess_func
+from preprocessing.preprocess_func_mp import *
 
 
-class LJSpeechRawParser(object):
+class LJSpeechRawParser(BaseRawParser):
     def __init__(self, root: Path, preprocessed_root: Path):
         super().__init__(root)
-        self.root = root
         self.data_parser = DataParser(str(preprocessed_root))
+        self.dsets = [
+            "train-clean-100",
+            "train-clean-360",
+            "train-other-500",
+            "dev-clean",
+            "dev-other",
+            "test-clean",
+            "test-other",
+        ]
 
     def prepare_initial_features(self, query, data):
         wav_16000, _ = librosa.load(data["wav_path"], sr=16000)
@@ -21,7 +31,7 @@ class LJSpeechRawParser(object):
         self.data_parser.wav_22050.save(wav_22050, query)
         self.data_parser.text.save(data["text"], query)
 
-    def parse(self):
+    def parse(self, n_workers=4):
         res = {"data": [], "data_info": [], "all_speakers": []}
         for dset in self.dsets:
             if not os.path.isdir(f"{self.root}/{dset}"):
@@ -49,67 +59,23 @@ class LJSpeechRawParser(object):
                         }
                         res["data"].append(data)
                         res["data_info"].append(data_info)
-        return res
 
+        with open(self.data_parser.metadata_path, "w", encoding="utf-8") as f:
+            json.dump(res["data_info"], f, indent=4)
+        with open(self.data_parser.speakers_path, "w", encoding="utf-8") as f:
+            json.dump(res["all_speakers"], f, indent=4)
 
-import os
-from tqdm import tqdm
-import json
-from pathlib import Path
-import librosa
-
-from Parsers.interface import BaseRawParser
-from text import clean_text
-from text.cleaners import check_twn
-from .parser import DataParser
-from preprocessing import preprocess_func
-
-
-class TATTTSRawParser(BaseRawParser):
-    def __init__(self, root: Path, preprocessed_root: Path):
-        super().__init__(root)
-        self.data_parser = DataParser(str(preprocessed_root))
-
-    def prepare_initial_features(self, query, data):
-        wav_16000, _ = librosa.load(data["wav_path"], sr=16000)
-        wav_22050, _ = librosa.load(data["wav_path"], sr=22050)
-        self.data_parser.wav_16000.save(wav_16000, query)
-        self.data_parser.wav_22050.save(wav_22050, query)
-        self.data_parser.text.save(data["text"], query)
+        n = len(res["data_info"])
+        tasks = list(zip(res["data_info"], res["data"], [False] * n))
         
-    def parse(self):
-        res = {"data": [], "data_info": [], "all_speakers": []}
-        spker_dirs = [d for d in self.root.iterdir() if d.is_dir()]
-        print(f'[INFO] {len(spker_dirs)} speakers were found in wav dir : "{self.root}"')
-        for spker_dir in tqdm(spker_dirs):
-            res["all_speakers"].append(spker_dir.name)
-            for wav_file in tqdm(spker_dir.rglob("*.wav")):
-                wav_path = str(wav_file)
-                info_file = str(wav_file)[:-4] + '.json'
-                with open(info_file, "r", encoding="utf-8") as f:
-                    info = json.load(f)
-                text = info["台羅數字調"]
-                text = clean_text(text, ["tat_cleaners"])
-                if not check_twn(text):
-                    continue
-
-                data = {
-                    "wav_path": wav_path,
-                    "text": text,
-                }
-                data_info = {
-                    "spk": spker_dir.name,
-                    "basename": wav_file.name[:-4],
-                }
-                res["data"].append(data)
-                res["data_info"].append(data_info)
-
-        return res
+        with Pool(processes=n_workers) as pool:
+            for res in tqdm(pool.imap(ImapWrapper(self.prepare_initial_features), tasks, chunksize=64), total=n):
+                pass
 
 
-class TATTTSPreprocessor(object):
+class LJSpeechPreprocessor(BasePreprocessor):
     def __init__(self, preprocessed_root: Path):
-        self.root = preprocessed_root
+        super().__init__(preprocessed_root)
         self.data_parser = DataParser(str(preprocessed_root))
 
     def prepare_mfa(self, mfa_data_dir: Path):
@@ -127,10 +93,6 @@ class TATTTSPreprocessor(object):
             txt_link_file = target_dir / f"{query['spk']}-{query['basename']}.txt"
             wav_file = self.data_parser.wav_16000.read_filename(query, raw=True)
             txt_file = self.data_parser.text.read_filename(query, raw=True)
-
-            text = self.data_parser.text.read_from_query(query)
-            if not check_twn(text):
-                continue
             
             if link_file.exists():
                 os.unlink(str(link_file))
@@ -141,14 +103,19 @@ class TATTTSPreprocessor(object):
 
     def mfa(self, mfa_data_dir: Path):
         corpus_directory = str(mfa_data_dir)
-        dictionary_path = "lexicon/taiwanese.txt"
-        acoustic_model_path = "MFA/TAT/taiwanese_acoustic_model.zip"
+        dictionary_path = "lexicon/librispeech-lexicon.txt"
         output_directory = str(self.root / "TextGrid")
-        cmd = f"mfa align {corpus_directory} {dictionary_path} {acoustic_model_path} {output_directory} -j 8 -v"
+        cmd = f"mfa align {corpus_directory} {dictionary_path} english {output_directory} -j 8 -v --clean"
         os.system(cmd)
     
     def denoise(self):
-        preprocess_func.denoise(self.root / "wav_16000", self.root / "wav_16000_enhanced")
+        pass
 
     def create_dataset(self):
-        pass
+        queries = self.data_parser.get_all_queries()
+        process_utterance_mp(
+            self.data_parser, queries,
+            "wav_22050",
+            n_workers=8, chunksize=64,
+            ignore_errors=True
+        )

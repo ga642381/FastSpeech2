@@ -10,64 +10,96 @@ import torch
 from text import sequence_to_text, text_to_sequence
 from torch.utils.data import DataLoader, Dataset
 from utils.pad import pad_1D, pad_2D
+from Parsers.parser import DataParser
 
 
-def average_to_phone_level(mel_level_attribute, phones_len):
-    result = np.zeros(phones_len.shape)
+# Handled by preprocess_func
+# def average_to_phone_level(mel_level_attribute, phones_len):
+#     result = np.zeros(phones_len.shape)
 
-    for i, _ in enumerate(phones_len):
-        start = 0
-        for j, d in enumerate(phones_len[i]):
-            # calculate average value, if phone len is 0, then average is 0
-            if start == start + d:
-                average = 0
-            else:
-                average = np.mean(mel_level_attribute[i][start : start + d])
+#     for i, _ in enumerate(phones_len):
+#         start = 0
+#         for j, d in enumerate(phones_len[i]):
+#             # calculate average value, if phone len is 0, then average is 0
+#             if start == start + d:
+#                 average = 0
+#             else:
+#                 average = np.mean(mel_level_attribute[i][start : start + d])
 
-            result[i][j] = average
-            start += d
-    return result
+#             result[i][j] = average
+#             start += d
+#     return result
 
 
 class Dataset(Dataset):
     def __init__(self, data_dir, split, sort=True):
+        self.data_parser = DataParser(data_dir)
         self.data_dir = data_dir
         self.split = split
         self.sort = sort
         self.metadata = self.get_metadata(data_dir)
         self.dataset = self.metadata[split]
-        self.spker_table = self.metadata["spker_table"]  # {spker: id}
+        self.set_speakers(self.data_parser.get_all_speakers())
 
+    def set_speakers(self, spkers):
+        # support run time setting in order to train on multiple datasets
+        self.spkers = spkers
+        self.spker_table = {s: i for i, s in enumerate(spkers)}  # {spker: id}
+    
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        data = self.dataset[idx]
-        phone_seq = text_to_sequence(data["text"]["phones"], [])
-        data_id = data["data_id"]
-        spker = data["spker"]
-        mel_path = data["mel"]["path"]
-        D_path = data["alignment"]["path"]
-        f0_path = data["f0"]["path"]
-        energy_path = data["energy"]["path"]
+        query = self.dataset[idx]
+        phone_seq = text_to_sequence(self.data_parser.phoneme.read_from_query(query), [], hp.lang_id)
+        data_id = query["basename"]
+        spker = query["spk"]
 
         spker_id = self.spker_table[spker]
         phone = np.array(phone_seq)
-        mel = np.load(mel_path)
-        D = np.load(D_path)
-        f0 = np.load(f0_path)
-        energy = np.load(energy_path)
+        mel = self.data_parser.mel.read_from_query(query)
+        D = self.data_parser.mfa_duration.read_from_query(query)
+        f0 = self.data_parser.mfa_duration_avg_pitch.read_from_query(query)
+        energy = self.data_parser.mfa_duration_avg_energy.read_from_query(query)
         sample = {
             "data_id": data_id,
             "spker_id": spker_id,
             "text": phone,
-            "mel": mel,
+            "mel": mel.T,
             "D": D,
             "f0": f0,
             "energy": energy,
         }
 
         return sample
+
+    # def __getitem__(self, idx):
+    #     data = self.dataset[idx]
+    #     phone_seq = text_to_sequence(data["text"]["phones"], [])
+    #     data_id = data["data_id"]
+    #     spker = data["spker"]
+    #     mel_path = data["mel"]["path"]
+    #     D_path = data["alignment"]["path"]
+    #     f0_path = data["f0"]["path"]
+    #     energy_path = data["energy"]["path"]
+
+    #     spker_id = self.spker_table[spker]
+    #     phone = np.array(phone_seq)
+    #     mel = np.load(mel_path)
+    #     D = np.load(D_path)
+    #     f0 = np.load(f0_path)
+    #     energy = np.load(energy_path)
+    #     sample = {
+    #         "data_id": data_id,
+    #         "spker_id": spker_id,
+    #         "text": phone,
+    #         "mel": mel,
+    #         "D": D,
+    #         "f0": f0,
+    #         "energy": energy,
+    #     }
+
+    #     return sample
 
     def collate_fn(self, batch):
         # samples_num   : 256 samples
@@ -133,8 +165,8 @@ class Dataset(Dataset):
         log_Ds = np.log(Ds + hp.log_offset)
 
         # pitch and energy from mel level to phone level 2020.11.26 kaiwei
-        f0s = average_to_phone_level(f0s, Ds)
-        energies = average_to_phone_level(energies, Ds)
+        # f0s = average_to_phone_level(f0s, Ds)
+        # energies = average_to_phone_level(energies, Ds)
 
         out = {
             "data_id": data_ids,
@@ -152,7 +184,7 @@ class Dataset(Dataset):
         return out
 
     def get_metadata(self, data_dir):
-        with open(data_dir / "metadata.json", "r", encoding="utf-8") as f:
+        with open(f"{data_dir}/metadata.json", "r", encoding="utf-8") as f:
             metadata = json.load(f)
         return metadata
 

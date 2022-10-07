@@ -2,6 +2,7 @@ from pathlib import Path
 
 import matplotlib
 import soundfile
+from scipy.io import wavfile
 import torch
 import torchaudio
 from config import hparams as hp
@@ -22,16 +23,27 @@ def add_comment(file_path: Path, index: str, text: str):
 
 
 # === files === #
+# def save_audios(
+#     wav_batch: torch.Tensor, wav_lens: torch.Tensor, data_ids: list, save_dir: Path
+# ) -> int:
+#     saved_num = 0
+#     wav_batch = wav_batch.cpu()
+#     wavs = [w[:l] for w, l in zip(wav_batch, wav_lens)]
+#     for wav, file_name in zip(wavs, data_ids):
+#         save_path = save_dir / (file_name + ".wav")
+#         torchaudio.save(save_path, wav.unsqueeze(0), hp.sampling_rate)
+#         # soundfile.write(save_path, wav.numpy(), hp.sampling_rate)
+#         saved_num += 1
+#     return saved_num
+
+
 def save_audios(
-    wav_batch: torch.Tensor, wav_lens: torch.Tensor, data_ids: list, save_dir: Path
+    wavs, wav_lens: torch.Tensor, data_ids: list, save_dir: Path
 ) -> int:
     saved_num = 0
-    wav_batch = wav_batch.cpu()
-    wavs = [w[:l] for w, l in zip(wav_batch, wav_lens)]
     for wav, file_name in zip(wavs, data_ids):
         save_path = save_dir / (file_name + ".wav")
-        torchaudio.save(save_path, wav.unsqueeze(0), hp.sampling_rate)
-        # soundfile.write(save_path, wav.numpy(), hp.sampling_rate)
+        wavfile.write(save_path, hp.sampling_rate, wav)
         saved_num += 1
     return saved_num
 
