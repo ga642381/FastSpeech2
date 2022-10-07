@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
-from audio.wavmel import Vocoder
+from dlhlp_lib.vocoders import MelGAN
 from config import hparams as hp
 from torch.utils.data import ConcatDataset
 from data.dataset import Dataset
@@ -37,14 +37,15 @@ class Trainer:
             self.inv_speaker_table,
         ) = self.__init_dataset()
         self.train_logger, self.eval_logger = self.__init_logger()
-        self.vocoder = Vocoder("melgan")
+        self.vocoder = MelGAN()
+        self.vocoder.cuda()
 
         # === nn === #
         self.model = self.__init_model(n_spkers=self.n_spkers).to(self.device)
         self.loss = FastSpeech2Loss().to(self.device)
         self.optimizer, self.scheduled_optim = self.__init_optimizer(restore_step)
         if restore_step > 0:
-            self.__load_model(self.path["checkpoint_path"], restore_step)
+            self.__load_model(self.paths["checkpoint_path"], restore_step)
             self.train_step = restore_step
             print(f"[Training] Model Restored at Step {self.train_step}")
         else:
@@ -213,9 +214,9 @@ class Trainer:
     ):
         # mel.shape : (batch, time, mel_dim)
         save_dir.mkdir(parents=True, exist_ok=True)
-        wav_lens = [m * self.vocoder.hop_length for m in mel_lens]
-        wav = self.vocoder.mel2wav(mel.transpose(1, 2))
-        utils.save_audios(wav, wav_lens, data_ids, save_dir)
+        wav_lens = [m * hp.hop_length for m in mel_lens]
+        wavs = self.vocoder.infer(mel.transpose(1, 2), wav_lens)
+        utils.save_audios(wavs, wav_lens, data_ids, save_dir)
 
     def __eval_and_synth(self):
         self.model.eval()
@@ -310,8 +311,8 @@ class Trainer:
 
 
 def main(args):
-    date_time = datetime.today().strftime("%Y-%m-%d-%H:%M")
-    record_idx = f"{args.exp_name}_{date_time}"
+    # date_time = datetime.today().strftime("%Y-%m-%d-%H:%M")
+    record_idx = f"{args.exp_name}"
     paths = {}
     paths["data_dir"] = args.data_dir
     record_root = Path(args.record_dir).resolve()

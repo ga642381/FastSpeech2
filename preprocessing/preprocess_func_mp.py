@@ -16,7 +16,6 @@ class ImapWrapper(object):
             self.f(*args)
         except:
             if ignore_errors:
-                print(*args[2])
                 return False
             raise
         return True

@@ -11,6 +11,8 @@ import torch
 import torch.nn as nn
 from g2p_en import G2p
 
+from dlhlp_lib.vocoders import get_vocoder
+
 import audio as Audio
 import utils
 from audio.wavmel import Vocoder
@@ -27,10 +29,11 @@ class Synthesizer:
         self.output_dir = Path(args.output_dir).resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.tts_model = self.__init_tts(self.ckpt_path)
-        self.vocoder = self.__init_vocoder("melgan")
+        self.vocoder = get_vocoder("MelGAN")()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.g2p = G2p()
-        pass
+
+        self.vocoder.to(self.device)
 
     def __init_tts(self, ckpt_path):
         state = torch.load(ckpt_path)
@@ -41,8 +44,8 @@ class Synthesizer:
         model.eval()
         return model
 
-    def __init_vocoder(self, name="melgan"):
-        return Vocoder(name)
+    # def __init_vocoder(self, name="melgan"):
+    #     return Vocoder(name)
 
     def __process_text(self, text):
         text_cleaned = clean_text(text, hp.text_cleaners)
@@ -66,7 +69,7 @@ class Synthesizer:
             (model_pred, text_mask, mel_mask, mel_lens) = self.tts_model(
                 spker_id, texts, text_lens
             )
-            wavs = self.vocoder.mel2wav(model_pred[1].transpose(1, 2))
+            wavs = self.vocoder.infer(model_pred[1].transpose(1, 2), wav_lens)
             output_names = list(range(len(wavs)))
             output_names = [str(o) for o in output_names]  # [0, 1,2,3,4]
             wav_lens = [m * self.vocoder.hop_length for m in mel_lens]

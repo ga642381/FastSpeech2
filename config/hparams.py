@@ -1,6 +1,6 @@
 import yaml
 
-dataset = "TATTTS"  # [LibriTTS, VCTK, LJSpeech, TAT, TATTTS]
+dataset = "TAT"  # [LibriTTS, VCTK, LJSpeech, TAT, TATTTS]
 lang_id = "twn"
 mfa_path = "./MFA"
 

@@ -85,10 +85,6 @@ class TATTTSPreprocessor(BasePreprocessor):
             txt_link_file = target_dir / f"{query['spk']}-{query['basename']}.txt"
             wav_file = self.data_parser.wav_16000.read_filename(query, raw=True)
             txt_file = self.data_parser.text.read_filename(query, raw=True)
-
-            text = self.data_parser.text.read_from_query(query)
-            if not check_twn(text):
-                continue
             
             if link_file.exists():
                 os.unlink(str(link_file))

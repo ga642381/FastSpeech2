@@ -17,7 +17,8 @@ else:
         "You should specify the dataset in hparams.py\
                                and write a corresponding file in data/"
     )
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+if hp.CUDA_LAUNCH_BLOCKING:
+    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 class Preprocessor:
@@ -54,9 +55,11 @@ class Preprocessor:
                 print("[INFO] Performing Montreal Force Alignment...")
                 self.processor.mfa(Path(self.preprocessed_root) / "mfa_data")
             # 4. Create Dataset
+            if self.args.preprocess:
+                print("[INFO] Preprocess all utterances...")
+                self.processor.create_dataset()
             if self.args.create_dataset:
                 print("[INFO] Creating Training and Validation Dataset...")
-                # self.processor.create_dataset()
                 split_dataset(DataParser(args.preprocessed_dir))
 
     def print_message(self):
@@ -106,6 +109,7 @@ if __name__ == "__main__":
     parser.add_argument("--denoise", action="store_true", default=False)
     parser.add_argument("--prepare_mfa", action="store_true", default=False)
     parser.add_argument("--mfa", action="store_true", default=False)
+    parser.add_argument("--preprocess", action="store_true", default=False)
     parser.add_argument("--create_dataset", action="store_true", default=False)
     args = parser.parse_args()
 

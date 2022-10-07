@@ -26,9 +26,11 @@ MEL_NN = LogMelSpectrogram(
     n_fft=hp.n_fft,
     win_length=hp.win_length,
     hop_length=hp.hop_length,
-    f_min=hp.mel_fmin,
-    f_max=hp.mel_fmax,
     n_mels=hp.n_mels,
+    pad=(hp.n_fft - hp.hop_length) // 2,
+    power=1,
+    norm="slaney",
+    mel_scale="slaney"
 )
 
 

@@ -89,10 +89,6 @@ class TATPreprocessor(BasePreprocessor):
             txt_link_file = target_dir / f"{query['spk']}-{query['basename']}.txt"
             wav_file = self.data_parser.wav_16000_enhanced.read_filename(query, raw=True)
             txt_file = self.data_parser.text.read_filename(query, raw=True)
-
-            text = self.data_parser.text.read_from_query(query)
-            if not check_twn(text):
-                continue
             
             if link_file.exists():
                 os.unlink(str(link_file))
@@ -111,14 +107,15 @@ class TATPreprocessor(BasePreprocessor):
     
     def denoise(self):
         preprocess_func.denoise(self.root / "wav_16000", self.root / "wav_16000_enhanced")
-
-    def create_dataset(self):
         queries = self.data_parser.get_all_queries()
         resample_mp(
             self.data_parser, queries,
             "wav_16000_enhanced", "wav_22050_enhanced", sr=22050,
             n_workers=8, chunksize=64
         )
+
+    def create_dataset(self):
+        queries = self.data_parser.get_all_queries()
         process_utterance_mp(
             self.data_parser, queries,
             "wav_22050_enhanced",
