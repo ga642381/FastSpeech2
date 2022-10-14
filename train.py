@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
-from dlhlp_lib.vocoders import MelGAN
+from dlhlp_lib.vocoders import MelGAN, HifiGAN
 from config import hparams as hp
 from torch.utils.data import ConcatDataset
 from data.dataset import Dataset
@@ -37,7 +37,7 @@ class Trainer:
             self.inv_speaker_table,
         ) = self.__init_dataset()
         self.train_logger, self.eval_logger = self.__init_logger()
-        self.vocoder = MelGAN()
+        self.vocoder = HifiGAN(dirpath="../model-lib/hifigan/TAT")
         self.vocoder.cuda()
 
         # === nn === #

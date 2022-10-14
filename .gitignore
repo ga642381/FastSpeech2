@@ -123,5 +123,6 @@ results/
 synth/
 log/
 eval/
+output/
 waveglow/pretrained_model/*
 

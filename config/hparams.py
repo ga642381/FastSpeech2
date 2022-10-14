@@ -1,12 +1,13 @@
 import yaml
 
-dataset = "TAT"  # [LibriTTS, VCTK, LJSpeech, TAT, TATTTS]
+dataset = "TATTTS"  # [LibriTTS, VCTK, LJSpeech, TAT, TATTTS]
 lang_id = "twn"
 mfa_path = "./MFA"
 
 ### Text ###
 # g2p_en
-text_cleaners = ["english_cleaners"]
+# text_cleaners = ["english_cleaners"]
+text_cleaners = ["tat_cleaners"]
 
 
 ### FastSpeech 2 ###
