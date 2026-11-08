@@ -31,7 +31,7 @@ max_seq_len = 1000
 min_seq_len = 20
 
 ### dataset ###
-with open("./config/dataset.yaml", "r") as f:
+with open("./config/dataset.yaml", "r", encoding="utf-8") as f:
     dataset_config = yaml.load(f, Loader=yaml.FullLoader)
 
 # Audio and mel
